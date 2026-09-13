@@ -1,0 +1,82 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* GLYPH — The Board at Midnight · Precision system
+   8px spacing grid. Locked content edges. Uniform cards.
+   Gold is the crown. Never pure white or black. */
+
+body {
+  @apply bg-night text-ivory font-body antialiased;
+  letter-spacing: -0.01em;
+  line-height: 1.55;
+}
+
+/* §1 — one shell shared by header, tabs, feed, nav: locked edges */
+.shell {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+  padding-left: 16px;
+  padding-right: 16px;
+  box-sizing: border-box;
+}
+
+/* §1 — desktop 3-column grid, feed centered, never left-drifting */
+.layout { display: block; }
+.rail { display: none; }
+.mobilenav { display: block; }
+@media (min-width: 1100px) {
+  .layout {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 600px) 320px;
+    justify-content: center;
+    gap: 24px;
+    padding: 0 16px;
+  }
+  .layout .shell { padding-left: 0; padding-right: 0; }
+  .rail { display: block; }
+  .mobilenav { display: none; }
+}
+
+/* §3 — identical card system: 20px pad, 16px radius, #16161A */
+.card {
+  background: #16161A;
+  border: 1px solid rgba(212,175,55,0.08);
+  border-radius: 16px;
+  padding: 20px;
+  transition: transform 220ms ease-out, box-shadow 220ms ease-out;
+}
+.card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(212,175,55,0.07); }
+
+.hairline { height: 1px; background: rgba(255,255,255,0.06); }
+.digits { font-variant-numeric: tabular-nums; }
+.section-label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8A93; }
+
+/* Inline notation chip — sits on the text baseline (§3) */
+.notation-chip {
+  color: #D4AF37;
+  background: rgba(212,175,55,0.12);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  vertical-align: baseline;
+}
+
+@keyframes cascade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.cascade { animation: cascade 320ms ease-out both; }
+@keyframes promote {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.25) translateY(-3px); text-shadow: 0 0 16px rgba(212,175,55,0.7); }
+  100% { transform: scale(1); }
+}
+.promoting { animation: promote 300ms ease-out; }
+@keyframes shimmer { from { opacity: 0.35; } to { opacity: 0.7; } }
+.skeleton-square { animation: shimmer 1.2s ease-in-out infinite alternate; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+:focus-visible { outline: 2px solid #D4AF37; outline-offset: 2px; }

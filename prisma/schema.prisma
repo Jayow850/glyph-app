@@ -1,0 +1,777 @@
+// ============================================================
+// GLYPH — Global Chess Community OS
+// Production Prisma Schema (PostgreSQL)
+// Multi-tenant: all club-scoped data carries clubId
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------- ENUMS ----------------
+
+enum Role {
+  OWNER
+  ADMIN
+  ORGANIZER
+  ARBITER
+  COACH
+  PLAYER
+  PARENT // scholastic mode
+}
+
+enum TimeControl {
+  CLASSICAL
+  RAPID
+  BLITZ
+  BULLET
+}
+
+enum TournamentFormat {
+  SWISS
+  ROUND_ROBIN
+  KNOCKOUT
+  TEAM_SWISS
+  LADDER
+  SIMUL
+}
+
+enum TournamentStatus {
+  DRAFT
+  REGISTRATION
+  CHECK_IN
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+enum MatchResult {
+  WHITE_WIN      // 1-0
+  BLACK_WIN      // 0-1
+  DRAW           // ½-½
+  WHITE_FORFEIT  // 0-1F
+  BLACK_FORFEIT  // 1-0F
+  DOUBLE_FORFEIT // 0-0
+  BYE_FULL       // 1 point bye
+  BYE_HALF       // ½ point bye
+  PENDING
+}
+
+enum ResultStatus {
+  PENDING
+  SUBMITTED       // one player submitted
+  CONFIRMED       // both players / arbiter confirmed
+  DISPUTED
+  ARBITER_RULED
+}
+
+enum EventType {
+  TOURNAMENT
+  TRAINING
+  MEETING
+  FRIENDLY
+  SIMUL
+  LECTURE
+}
+
+enum RsvpStatus {
+  GOING
+  MAYBE
+  NOT_GOING
+  WAITLIST
+}
+
+enum NotificationType {
+  PAIRING
+  RESULT
+  TOURNAMENT_UPDATE
+  CLUB_ANNOUNCEMENT
+  MESSAGE
+  ACHIEVEMENT
+  RATING_CHANGE
+  EVENT_REMINDER
+  DISPUTE
+  SYSTEM
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  TRIALING
+}
+
+enum ChessTitle {
+  GM
+  IM
+  FM
+  CM
+  WGM
+  WIM
+  WFM
+  WCM
+  NM
+  NONE
+}
+
+enum PrivacyLevel {
+  PUBLIC
+  CLUB_ONLY
+  PRIVATE
+}
+
+enum PostType {
+  TEXT
+  PHOTO
+  VIDEO
+  GAME
+  PUZZLE
+  CLIP
+  LIVE
+}
+
+enum ReactionKind {
+  PAWN      // the gold pawn like
+  BRILLIANT // 👑 weighted by reactor Elo
+  FIRE      // 🔥
+  SHOCK     // 🤯
+}
+
+// ---------------- IDENTITY ----------------
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String?
+  oauthProvider  String?  // google | github | apple
+  oauthId        String?
+  emailVerified  Boolean  @default(false)
+  isMinor        Boolean  @default(false) // scholastic safety
+  parentId       String?  // linked parent account
+  parent         User?    @relation("ParentChild", fields: [parentId], references: [id])
+  children       User[]   @relation("ParentChild")
+  locale         String   @default("en")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  bannedAt       DateTime?
+  banReason      String?
+
+  profile        Profile?
+  memberships    Membership[]
+  ratings        Rating[]
+  tournamentEntries TournamentPlayer[]
+  whiteMatches   Match[]  @relation("WhitePlayer")
+  blackMatches   Match[]  @relation("BlackPlayer")
+  messages       Message[]
+  chatMembers    ChatRoomMember[]
+  posts          Post[]
+  comments       Comment[]
+  reactions      Reaction[]
+  rsvps          Rsvp[]
+  notifications  Notification[]
+  achievements   UserAchievement[]
+  followers      Follow[] @relation("Following")
+  following      Follow[] @relation("Follower")
+  games          Game[]   @relation("GameOwner")
+  auditLogs      AuditLog[]
+  disputesRaised Dispute[] @relation("DisputeRaiser")
+  disputesRuled  Dispute[] @relation("DisputeArbiter")
+  bookmarks      Bookmark[]
+  bookmarkFolders BookmarkFolder[]
+  streak         Streak?
+  clubJoinRequests ClubJoinRequest[]
+
+  @@index([email])
+}
+
+model Profile {
+  id            String       @id @default(cuid())
+  userId        String       @unique
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName      String
+  handle        String       @unique
+  avatarUrl     String?
+  bannerUrl     String?
+  country       String?      // ISO 3166-1 alpha-2 → flag
+  bio           String?      @db.Text
+  birthYear     Int?
+  gender        String?
+  genderPrivacy PrivacyLevel @default(PRIVATE)
+  agePrivacy    PrivacyLevel @default(PRIVATE)
+  title         ChessTitle   @default(NONE)
+  fideId        String?      // for future FIDE rating import
+  nationalId    String?      // national federation ID
+  verified      Boolean      @default(false)
+  favoriteOpening String?
+  boardTheme    String       @default("midnight")  // midnight | tournament | walnut | ice
+  pieceSet      String       @default("classic")
+  updatedAt     DateTime     @updatedAt
+
+  @@index([handle])
+  @@index([country])
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}
+
+// ---------------- RATINGS ----------------
+
+model Rating {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clubId      String?     // null = platform-wide rating
+  club        Club?       @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  timeControl TimeControl
+  current     Int         @default(1200)
+  peak        Int         @default(1200)
+  gamesPlayed Int         @default(0)
+  provisional Boolean     @default(true) // < 20 games
+  verified    Boolean     @default(false) // true only via OAuth import or federation ID
+  verifySource String?    // LICHESS | CHESSCOM | FIDE
+  kFactor     Int         @default(40)
+  updatedAt   DateTime    @updatedAt
+
+  history     RatingHistory[]
+
+  @@unique([userId, clubId, timeControl])
+  @@index([clubId, timeControl, current]) // leaderboards
+}
+
+model RatingHistory {
+  id           String   @id @default(cuid())
+  gameId    String? // which game produced this point
+  ratingId     String
+  rating       Rating   @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  matchId      String?
+  tournamentId String?
+  before       Int
+  after        Int
+  delta        Int
+  createdAt    DateTime @default(now())
+
+  @@index([ratingId, createdAt]) // rating graph
+}
+
+// ---------------- CLUBS (multi-tenant core) ----------------
+
+model Club {
+  id           String   @id @default(cuid())
+  slug         String   @unique // /club/[slug]
+  name         String
+  logoUrl      String?
+  bannerUrl    String?
+  description  String?  @db.Text
+  country      String?
+  city         String?
+  isScholastic Boolean  @default(false) // enables parent portal + privacy defaults
+  isPublic     Boolean  @default(true)
+  inviteCode   String?  @unique
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships  Membership[]
+  tournaments  Tournament[]
+  ratings      Rating[]
+  posts        Post[]
+  events       Event[]
+  chatRooms    ChatRoom[]
+  seasons      Season[]
+  subscription Subscription?
+  achievements Achievement[]
+  joinRequests ClubJoinRequest[]
+
+  @@index([slug])
+  @@index([country, city])
+}
+
+model Membership {
+  id       String   @id @default(cuid())
+  userId   String
+  clubId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  role     Role     @default(PLAYER)
+  joinedAt DateTime @default(now())
+  active   Boolean  @default(true)
+
+  @@unique([userId, clubId])
+  @@index([clubId, role])
+}
+
+// Seasons: club championships across months
+model Season {
+  id        String   @id @default(cuid())
+  clubId    String
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  name      String   // "Spring 2026"
+  startsAt  DateTime
+  endsAt    DateTime
+  tournaments Tournament[]
+}
+
+// ---------------- TOURNAMENTS ----------------
+
+model Tournament {
+  id            String           @id @default(cuid())
+  clubId        String
+  club          Club             @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  seasonId      String?
+  season        Season?          @relation(fields: [seasonId], references: [id])
+  name          String
+  format        TournamentFormat @default(SWISS)
+  timeControl   TimeControl      @default(RAPID)
+  timeControlDetail String?      // "15+10", "90+30"
+  status        TournamentStatus @default(DRAFT)
+  totalRounds   Int              @default(5)
+  currentRound  Int              @default(0)
+  isRated       Boolean          @default(true)
+  kFactorOverride Int?
+  maxPlayers    Int?
+  entryFeeCents Int?             @default(0)
+  startsAt      DateTime?
+  checkInOpensAt DateTime?
+  location      String?
+  description   String?          @db.Text
+  tiebreakOrder String[]         @default(["BUCHHOLZ", "SONNEBORN_BERGER", "DIRECT_ENCOUNTER"])
+  allowHalfByes Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  entries TournamentPlayer[]
+  rounds  Round[]
+  chatRoom ChatRoom?
+
+  @@index([clubId, status])
+}
+
+model TournamentPlayer {
+  id           String   @id @default(cuid())
+  tournamentId String
+  userId       String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  seedRating   Int        @default(1200)
+  score        Float      @default(0)
+  checkedIn    Boolean    @default(false)
+  withdrawn    Boolean    @default(false)
+  withdrawnAtRound Int?
+  requestedByes Int[]     @default([]) // round numbers for half-point byes
+  colorHistory String     @default("") // "WBWB" — for pairing engine
+  performanceRating Int?
+  finalRank    Int?
+
+  @@unique([tournamentId, userId])
+  @@index([tournamentId, score])
+}
+
+model Round {
+  id           String     @id @default(cuid())
+  tournamentId String
+  tournament   Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  number       Int
+  startsAt     DateTime?
+  completedAt  DateTime?
+  matches      Match[]
+
+  @@unique([tournamentId, number])
+}
+
+model Match {
+  id           String       @id @default(cuid())
+  roundId      String
+  round        Round        @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  boardNumber  Int
+  whiteId      String?
+  blackId      String?      // null for bye
+  white        User?        @relation("WhitePlayer", fields: [whiteId], references: [id])
+  black        User?        @relation("BlackPlayer", fields: [blackId], references: [id])
+  result       MatchResult  @default(PENDING)
+  resultStatus ResultStatus @default(PENDING)
+  submittedById String?     // offline-tolerant: queued submissions carry clientTimestamp
+  clientTimestamp DateTime?
+  confirmedAt  DateTime?
+  game         Game?
+  dispute      Dispute?
+
+  @@index([roundId])
+  @@index([whiteId])
+  @@index([blackId])
+}
+
+// PGN archive
+
+model Game {
+  id        String   @id @default(cuid())
+  matchId   String?  @unique
+  match     Match?   @relation(fields: [matchId], references: [id])
+  ownerId   String
+  owner     User     @relation("GameOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  pgn       String   @db.Text
+  eco       String?
+  moveCount Int?
+  createdAt DateTime @default(now())
+
+  @@index([ownerId])
+  @@index([eco])
+}
+
+model Dispute {
+  id         String   @id @default(cuid())
+  matchId    String   @unique
+  match      Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  raisedById String
+  raisedBy   User     @relation("DisputeRaiser", fields: [raisedById], references: [id])
+  reason     String   @db.Text
+  ruling     String?  @db.Text
+  arbiterId  String?
+  arbiter    User?    @relation("DisputeArbiter", fields: [arbiterId], references: [id])
+  resolvedAt DateTime?
+  createdAt  DateTime @default(now())
+}
+
+// ---------------- MESSAGING ----------------
+
+model ChatRoom {
+  id           String   @id @default(cuid())
+  clubId       String?
+  club         Club?    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  tournamentId String?  @unique
+  tournament   Tournament? @relation(fields: [tournamentId], references: [id])
+  name         String?
+  isDirect     Boolean  @default(false)
+  isRequest    Boolean  @default(false)  // DM from non-mutual: one message, pending accept
+  acceptedAt   DateTime?
+  isAnnouncement Boolean @default(false) // read-only for non-admins
+  category     String?  // Discord-style grouping: "General", "Tournaments", "Off-topic"
+  position     Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  members  ChatRoomMember[]
+  messages Message[]
+
+  @@index([clubId])
+}
+
+model ChatRoomMember {
+  id         String   @id @default(cuid())
+  roomId     String
+  userId     String
+  room       ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastReadAt DateTime @default(now())
+  muted      Boolean  @default(false)
+
+  @@unique([roomId, userId])
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  roomId    String
+  senderId  String
+  room      ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  sender    User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  body      String   @db.Text
+  fileUrl   String?
+  fileType  String?
+  replyToId String?
+  reactions Reaction[]
+  createdAt DateTime @default(now())
+  editedAt  DateTime?
+  deletedAt DateTime?
+
+  @@index([roomId, createdAt])
+}
+
+// ---------------- FEED ----------------
+
+model Post {
+  id        String   @id @default(cuid())
+  clubId    String?  // null = global feed post
+  authorId  String
+  club      Club?    @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  type      PostType @default(TEXT)
+  body      String?  @db.Text
+
+  // media (PHOTO up to 10, VIDEO/CLIP single)
+  mediaUrls   String[] @default([])
+  videoUrl    String?
+  durationSec Int?     // CLIP 15-60s, VIDEO <=180s feed / <=1800s Studio
+  isStudio    Boolean  @default(false)
+
+  // GAME posts
+  pgn            String? @db.Text
+  criticalPly    Int?    // auto-detected "the blunder"
+
+  // PUZZLE posts
+  puzzleFen      String?
+  puzzleSolution String?  // SAN of the winning move
+  solveCount     Int      @default(0)
+  attemptCount   Int      @default(0)
+
+  pinned     Boolean  @default(false)
+  pinnedAt   DateTime? // reorderable pins per profile tab
+  archived   Boolean  @default(false)  // IG-style archive: hidden from feed/profile, stats kept
+  archivedAt DateTime?
+  visibility PostVisibility @default(PUBLIC)
+  editedAt   DateTime? // "edited" marker
+  viewCount  Int      @default(0)
+  shareCount Int      @default(0)
+  saveCount  Int      @default(0)
+  repostCount Int     @default(0)
+  repostOfId String?  // set when this post is a repost
+  repostOf   Post?    @relation("Reposts", fields: [repostOfId], references: [id])
+  reposts    Post[]   @relation("Reposts")
+  hdOriginalUrl String? // original upload kept; videoUrl serves the transcoded HD stream
+  comments  Comment[]
+  reactions Reaction[]
+  bookmarks Bookmark[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clubId, pinned, createdAt])
+  @@index([authorId, createdAt])
+  @@index([type, createdAt]) // Clips tab, Live Now
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String
+  authorId  String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String?  @db.Text
+  videoUrl  String?  // 15s video reply
+  parentId  String?  // threaded replies
+  parent    Comment? @relation("Thread", fields: [parentId], references: [id])
+  replies   Comment[] @relation("Thread")
+  reactions Reaction[]
+  createdAt DateTime @default(now())
+  deletedAt DateTime?
+
+  @@index([postId, createdAt])
+  @@index([parentId])
+}
+
+model Reaction {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind         ReactionKind @default(PAWN)
+  reactorElo   Int?         // snapshot: "GM-approved" brilliants
+  postId       String?
+  commentId    String?
+  messageId    String?
+  post         Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  comment      Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  message      Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+
+  @@unique([userId, kind, postId, commentId, messageId])
+  @@index([postId, kind])
+}
+
+// ---------------- EVENTS ----------------
+
+model Event {
+  id          String    @id @default(cuid())
+  clubId      String
+  club        Club      @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  type        EventType @default(MEETING)
+  title       String
+  description String?   @db.Text
+  location    String?
+  startsAt    DateTime
+  endsAt      DateTime?
+  capacity    Int?
+  reminderSent Boolean  @default(false)
+  rsvps       Rsvp[]
+  createdAt   DateTime  @default(now())
+
+  @@index([clubId, startsAt])
+}
+
+model Rsvp {
+  id       String     @id @default(cuid())
+  eventId  String
+  userId   String
+  event    Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user     User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status   RsvpStatus @default(GOING)
+  attended Boolean?
+
+  @@unique([eventId, userId])
+}
+
+// ---------------- ACHIEVEMENTS ----------------
+
+model Achievement {
+  id          String  @id @default(cuid())
+  clubId      String? // null = platform-wide
+  club        Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  code        String  // TOURNAMENT_CHAMPION, UNDEFEATED, MOST_IMPROVED...
+  name        String
+  description String
+  iconUrl     String?
+  awards      UserAchievement[]
+
+  @@unique([clubId, code])
+}
+
+model UserAchievement {
+  id            String      @id @default(cuid())
+  userId        String
+  achievementId String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+  tournamentId  String?
+  awardedAt     DateTime    @default(now())
+
+  @@index([userId])
+}
+
+// ---------------- NOTIFICATIONS ----------------
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String?
+  linkUrl   String?
+  readAt    DateTime?
+  emailSent Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, readAt, createdAt])
+}
+
+// ---------------- BILLING ----------------
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  clubId               String             @unique
+  club                 Club               @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  tier                 SubscriptionTier   @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  currentPeriodEnd     DateTime?
+  payments             Payment[]
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+}
+
+model Payment {
+  id              String       @id @default(cuid())
+  subscriptionId  String
+  subscription    Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  stripeInvoiceId String?      @unique
+  amountCents     Int
+  currency        String       @default("usd")
+  paidAt          DateTime?
+  invoiceUrl      String?
+  createdAt       DateTime     @default(now())
+}
+
+// ---------------- SOCIAL EXTRAS ----------------
+
+enum JoinRequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+}
+enum PostVisibility {
+  PUBLIC
+  FOLLOWERS
+  ONLY_ME
+}
+
+model ClubJoinRequest {
+  id        String            @id @default(cuid())
+  clubId    String
+  userId    String
+  club      Club              @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status    JoinRequestStatus @default(PENDING)
+  decidedBy String?
+  createdAt DateTime          @default(now())
+
+  @@unique([clubId, userId])
+  @@index([clubId, status])
+}
+
+model BookmarkFolder {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String     // "Endgames to learn"
+  bookmarks Bookmark[]
+  createdAt DateTime   @default(now())
+
+  @@unique([userId, name])
+}
+
+model Bookmark {
+  id        String          @id @default(cuid())
+  userId    String
+  postId    String
+  folderId  String?
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post      Post            @relation(fields: [postId], references: [id], onDelete: Cascade)
+  folder    BookmarkFolder? @relation(fields: [folderId], references: [id])
+  createdAt DateTime        @default(now())
+
+  @@unique([userId, postId])
+}
+
+model Streak {
+  id           String    @id @default(cuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  current      Int       @default(0)
+  best         Int       @default(0)
+  freezes      Int       @default(1)   // one free streak freeze; Pro clubs can gift more
+  lastActiveAt DateTime?
+}
+
+// ---------------- AUDIT ----------------
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  clubId    String?
+  action    String   // PAIRING_OVERRIDE, RESULT_CHANGED, USER_BANNED...
+  entity    String?
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([clubId, createdAt])
+}
+
+// ============ v7: playable chess, live streaming, real money ============
+
