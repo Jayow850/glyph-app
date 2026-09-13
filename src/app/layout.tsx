@@ -15,6 +15,7 @@ export const viewport: Viewport = {
 
 const NAV = [
   { href: "/feed", icon: "⌂", label: "Home" },
+  { href: "/play", icon: "♟", label: "Play" },
   //{ href: "/clips", icon: "▶", label: "Clips" },
   { href: "/compose", fab: true },
   { href: "/clubs", icon: "♜", label: "Clubs" },

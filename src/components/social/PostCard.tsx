@@ -4,6 +4,7 @@ import { PawnLike } from "./PawnLike";
 import { EloChip } from "./EloChip";
 import { CommentThread } from "./CommentThread";
 import { Board, fenToFrame } from "./Board";
+import { GameReplay } from "./GameReplay";
 
 export interface PostDto {
   id: string;
@@ -104,6 +105,8 @@ export function PostCard({ post, meLiked = false }: { post: PostDto; meLiked?: b
         )}
 
         {post.type === "PUZZLE" && post.puzzleFen && <Board frame={fenToFrame(post.puzzleFen)} />}
+
+        {post.type === "GAME" && post.pgn && <GameReplay pgn={post.pgn} />}
       </div>
 
       {/* §4 — hairline divider, 16px both sides, then the reaction row */}

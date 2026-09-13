@@ -45,6 +45,24 @@ function pickReply(e: Engine) {
   return scored[0].m;
 }
 
+/** Build a PGN from the SAN move list. */
+function buildPgn(sans: string[], result: string) {
+  const date = new Date().toISOString().slice(0, 10).replace(/-/g, ".");
+  const headers = [
+    `[Event "Casual game on GLYPH"]`,
+    `[Date "${date}"]`,
+    `[White "You"]`,
+    `[Black "GLYPH engine"]`,
+    `[Result "${result}"]`,
+  ].join("\n");
+  let body = "";
+  sans.forEach((san, i) => {
+    if (i % 2 === 0) body += `${i / 2 + 1}. `;
+    body += san + " ";
+  });
+  return `${headers}\n\n${body.trim()} ${result}`;
+}
+
 /** Captured pieces strip shown above and below the board. */
 function CapturedStrip({ pieces, advantage }: { pieces: string[]; advantage: number }) {
   return (
@@ -62,6 +80,9 @@ export default function PlayPage() {
   const [history, setHistory] = useState<string[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
   const [lastMove, setLastMove] = useState<[number, number] | null>(null);
+  const [posting, setPosting] = useState(false);
+  const [posted, setPosted] = useState(false);
+  const [postError, setPostError] = useState<string | null>(null);
 
   const engine = useMemo(() => new Engine(fen), [fen]);
   const legal = useMemo(() => engine.legalMoves(), [engine]);
@@ -118,6 +139,35 @@ export default function PlayPage() {
     setHistory([]);
     setSelected(null);
     setLastMove(null);
+    setPosted(false);
+    setPostError(null);
+  }
+
+  async function postGame() {
+    setPosting(true);
+    setPostError(null);
+    const result =
+      status === "checkmate" ? (engine.turn === "w" ? "0-1" : "1-0")
+      : status === "active" ? "*"
+      : "1/2-1/2";
+    const pgn = buildPgn(history, result);
+    const body =
+      status === "checkmate"
+        ? (engine.turn === "w" ? "Lost this one to the engine." : "Beat the engine. ♟")
+        : "A game from GLYPH.";
+
+    try {
+      const res = await fetch("/api/posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "GAME", body, pgn }),
+      });
+      if (res.ok) setPosted(true);
+      else setPostError(res.status === 401 ? "Sign in to post your games." : "Could not post. Try again.");
+    } catch {
+      setPostError("Network problem — is the server running?");
+    }
+    setPosting(false);
   }
 
   const statusText =
@@ -140,6 +190,20 @@ export default function PlayPage() {
       </div>
 
       <p className="text-gold" style={{ fontSize: 15, fontWeight: 600 }}>{statusText}</p>
+
+      {history.length > 0 && (
+        <button
+          onClick={postGame}
+          disabled={posting || posted}
+          className="bg-gold text-night"
+          style={{ borderRadius: 12, padding: "12px 0", fontWeight: 600, fontSize: 15,
+                   border: "none", cursor: "pointer", opacity: posting || posted ? 0.5 : 1 }}
+        >
+          {posted ? "✓ Posted to your feed" : posting ? "Posting…" : "♟ Post this game"}
+        </button>
+      )}
+
+      {postError && <p style={{ color: "#B0575A", fontSize: 14 }}>{postError}</p>}
 
       <CapturedStrip pieces={whiteLost} advantage={edge} />
       <PlayBoard
