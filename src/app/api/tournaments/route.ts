@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { requireRole, can } from "@/lib/rbac";
-import { assertWithinLimits } from "@/lib/stripe/billing";
+import { assertWithinLimits } from "@/lib/limits";
 
 const CreateTournament = z.object({
   clubId: z.string(),

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
-import { assertWithinLimits } from "@/lib/stripe/billing";
+import { assertWithinLimits } from "@/lib/limits";
 import { notify } from "@/lib/services/notifications";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
