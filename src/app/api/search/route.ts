@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
   const like = { contains: q, mode: "insensitive" as const };
   const [people, clubs, posts] = await Promise.all([
     (tab === "top" || tab === "people")
-      ? prisma.user.findMany({ where: { OR: [{ name: like }, { profile: { handle: like } }] }, take: 10, include: { profile: true, ratings: { where: { clubId: null, timeControl: "RAPID" } }, _count: { select: { followers: true } } } })
+      ? prisma.user.findMany({ where: { OR: [{ profile: { fullName: like } }, { profile: { handle: like } }] }, take: 10, include: { profile: true, ratings: { where: { clubId: null, timeControl: "RAPID" } }, _count: { select: { followers: true } } } })
       : [],
     (tab === "top" || tab === "clubs")
       ? prisma.club.findMany({ where: { OR: [{ name: like }, { slug: like }] }, take: 10, include: { _count: { select: { memberships: true } } } })

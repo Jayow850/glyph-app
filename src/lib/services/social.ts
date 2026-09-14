@@ -53,22 +53,23 @@ export async function follow(followerId: string, handle: string) {
   return { following: true };
 }
 
-/** Score a puzzle attempt (first attempt counts) and update the daily streak. */
+/** Score a puzzle attempt and update the daily streak. */
 export async function solvePuzzle(userId: string, postId: string, answer: string) {
   const post = await prisma.post.findUniqueOrThrow({ where: { id: postId } });
   if (post.type !== "PUZZLE" || !post.puzzleSolution) throw new Response("Not a puzzle", { status: 400 });
   const correct = answer.trim() === post.puzzleSolution.trim();
 
-  const prior = await prisma.puzzleAttempt.findUnique({ where: { postId_userId: { postId, userId } } });
-  if (!prior) {
-    await prisma.puzzleAttempt.create({ data: { postId, userId, correct } });
-    await prisma.post.update({
-      where: { id: postId },
-      data: { attemptCount: { increment: 1 }, ...(correct ? { solveCount: { increment: 1 } } : {}) },
-    });
-    if (correct) await touchStreak(userId);
-  }
-  return { correct, solveCount: post.solveCount + (correct && !prior ? 1 : 0), attemptCount: post.attemptCount + (prior ? 0 : 1) };
+  await prisma.post.update({
+    where: { id: postId },
+    data: { attemptCount: { increment: 1 }, ...(correct ? { solveCount: { increment: 1 } } : {}) },
+  });
+  if (correct) await touchStreak(userId);
+
+  return {
+    correct,
+    solveCount: post.solveCount + (correct ? 1 : 0),
+    attemptCount: post.attemptCount + 1,
+  };
 }
 
 /** Daily streak with the gold flame. Resets after a missed day. */

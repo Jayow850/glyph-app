@@ -6,7 +6,7 @@
 // Pure class (no DB imports) so it is fully unit-testable; persistence
 // and broadcast are injected as callbacks.
 // ============================================================
-import { Engine, type Move } from "./engine.ts";
+import { Engine, type Move } from "./engine";
 
 export type EndReason = "checkmate" | "stalemate" | "timeout" | "resign" | "draw_agreed" | "fifty" | "threefold" | "material" | "abort" | "abandoned";
 export interface GameConfig {

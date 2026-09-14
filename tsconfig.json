@@ -38,6 +38,10 @@
     ".next/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "lib/test-engine.ts",
+    "lib/test-gameloop.ts",
+    "lib/test-money.ts",
+    "lib/test-tournament.ts"
   ]
 }
