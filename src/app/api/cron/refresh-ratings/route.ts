@@ -6,7 +6,7 @@ import { dec, fetchLichess, fetchChessComStats, applyVerifiedRatings, RateLimite
  * Scheduled refresh (Vercel cron / Railway scheduler → every 6–12h).
  * Serial requests, gzip on Chess.com, full-minute backoff on Lichess 429.
  * Never poll Chess.com faster than its ~12–24h cache anyway.
- * vercel.json: { "crons": [{ "path": "/api/cron/refresh-ratings", "schedule": "0 */8 * * *" }] }
+
  */
 export async function GET(req: NextRequest) {
   if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
