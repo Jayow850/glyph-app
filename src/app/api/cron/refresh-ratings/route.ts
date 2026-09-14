@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { dec, fetchLichess, fetchChessComStats, applyVerifiedRatings, RateLimited } from "@/lib/services/linkedAccounts";
 
-/**
- * Scheduled refresh (Vercel cron / Railway scheduler → every 6–12h).
- * Serial requests, gzip on Chess.com, full-minute backoff on Lichess 429.
- * Never poll Chess.com faster than its ~12–24h cache anyway.
 
- */
 export async function GET(req: NextRequest) {
   if (req.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
