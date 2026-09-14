@@ -9,7 +9,7 @@ import { stripe } from "@/lib/stripe/billing";
  * (creditCoinPurchase, idempotent by payment-intent), never optimistically.
  * Prices are server-defined; the client can only pick a pack id.
  */
-export const COIN_PACKS = {
+const COIN_PACKS = {
   starter: { coins: 100,  cents: 99,   label: "100 coins" },
   popular: { coins: 550,  cents: 499,  label: "550 coins · best value" },
   pro:     { coins: 1200, cents: 999,  label: "1,200 coins" },
