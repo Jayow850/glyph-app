@@ -249,10 +249,10 @@ export default async function ChallengesPage() {
                     borderTop: i === 0 ? "none" : "1px solid var(--border)",
                   }}
                 >
-                  <Avatar name={c.to.profile?.fullName ?? "Player"} size={34} />
+                  <Avatar name={c.to?.profile?.fullName ?? "Open seek"} size={34} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: "var(--t-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {c.to.profile?.fullName ?? "Player"}
+                      {c.to?.profile?.fullName ?? "Anyone in your club"}
                     </p>
                     <p className="t-caption digits" style={{ color: "var(--text-muted)" }}>
                       {clock.text} · {c.rated ? "rated" : "casual"}

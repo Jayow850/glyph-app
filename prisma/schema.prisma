@@ -241,6 +241,7 @@ model Profile {
   favoriteOpening String?
   boardTheme    String       @default("midnight")
   pieceSet      String       @default("classic")
+  lastSeenAt    DateTime?
   updatedAt     DateTime     @updatedAt
 
   @@index([handle])
@@ -482,8 +483,10 @@ model Challenge {
   id          String   @id @default(cuid())
   fromId      String
   from        User     @relation("ChallengesSent", fields: [fromId], references: [id], onDelete: Cascade)
-  toId        String
-  to          User     @relation("ChallengesReceived", fields: [toId], references: [id], onDelete: Cascade)
+  toId        String?  // null = an open seek any club member may accept
+  to          User?    @relation("ChallengesReceived", fields: [toId], references: [id], onDelete: Cascade)
+  clubId      String?
+  expiresAt   DateTime?
   timeControl String   @default("900+10")
   color       String   @default("random")
   rated       Boolean  @default(true)
@@ -520,6 +523,11 @@ model LiveGame {
   blackRatingBefore Int?
   whiteRatingDelta  Int?
   blackRatingDelta  Int?
+  undoFen      String?
+  undoWhiteMs  Int?
+  undoBlackMs  Int?
+  takebackBy   String?
+  disconnectAt DateTime?
   messages    GameMessage[]
   match       Match?
   createdAt   DateTime       @default(now())
@@ -867,7 +875,13 @@ model GlyphRating {
   rd           Float         @default(350)
   games        Int           @default(0)
   peak         Int           @default(1200)
+  volatility   Float         @default(0.06)
+  wins         Int           @default(0)
+  losses       Int           @default(0)
+  draws        Int           @default(0)
+  peakAt       DateTime?
   lastPlayedAt DateTime?
+  history      GlyphRatingHistory[]
 
   @@unique([userId, category])
   @@index([category, rating])
@@ -884,4 +898,24 @@ model GameMessage {
   createdAt DateTime        @default(now())
 
   @@index([gameId, createdAt])
+}
+
+/**
+ * One row per rated game, per player. This is what a profile graph is
+ * drawn from, and what makes a rating auditable rather than a number
+ * that simply changed overnight.
+ */
+model GlyphRatingHistory {
+  id             String      @id @default(cuid())
+  glyphRatingId  String
+  glyphRating    GlyphRating @relation(fields: [glyphRatingId], references: [id], onDelete: Cascade)
+  liveGameId     String?
+  before         Int
+  after          Int
+  delta          Int
+  opponentRating Int
+  result         String      // win | loss | draw
+  createdAt      DateTime    @default(now())
+
+  @@index([glyphRatingId, createdAt])
 }

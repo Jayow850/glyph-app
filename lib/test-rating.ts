@@ -1,51 +1,86 @@
-// Run: node --experimental-strip-types lib/test-rating.ts
-import { update, g, expectedScore, decayRd, isProvisional, START_RATING, START_RD } from "./rating/glicko.ts";
-import { classify, estimatedDurationSec, parseId, label, PRESETS, fromMinuteSpec } from "./game/timeControls.ts";
+// Run: npm run test:rating
+import {
+  update, decay, stakes, isProvisional,
+  START_RATING, START_RD, START_VOLATILITY,
+} from "./rating/glicko2.ts";
+import {
+  classify, estimatedDurationSec, parseId, label, PRESETS, fromMinuteSpec,
+} from "./game/timeControls.ts";
 
 let pass = 0, fail = 0;
-function check(name: string, got: unknown, want: unknown) {
-  const ok = String(got) === String(want);
-  if (ok) { pass++; console.log(`  ok   ${name}`); }
-  else { fail++; console.log(`  FAIL ${name}\n       got  ${got}\n       want ${want}`); }
-}
+
 function near(name: string, got: number, want: number, tol: number) {
-  const ok = Math.abs(got - want) <= tol;
-  if (ok) { pass++; console.log(`  ok   ${name} (${got.toFixed(2)})`); }
+  if (Math.abs(got - want) <= tol) { pass++; console.log(`  ok   ${name} (${got.toFixed(4)})`); }
   else { fail++; console.log(`  FAIL ${name}\n       got  ${got}\n       want ${want} ±${tol}`); }
 }
 
-console.log("\nGlicko — Glickman's worked example");
-// From the Glicko paper: a 1500/RD200 player beats 1400/30, loses to
-// 1550/100 and 1700/300. The published answer is 1464.1 with RD 151.4.
+function check(name: string, got: unknown, want: unknown) {
+  if (String(got) === String(want)) { pass++; console.log(`  ok   ${name}`); }
+  else { fail++; console.log(`  FAIL ${name}\n       got  ${got}\n       want ${want}`); }
+}
+
+console.log("\nGlicko-2 — Glickman's published worked example");
 {
-  const out = update({ rating: 1500, rd: 200 }, [
+  // 1500 / RD 200 / σ 0.06 against (1400,30,W) (1550,100,L) (1700,300,L).
+  // The paper gives µ' = −0.2069, φ' = 0.8722, σ' = 0.05999.
+  const out = update({ rating: 1500, rd: 200, volatility: 0.06 }, [
     { rating: 1400, rd: 30, score: 1 },
     { rating: 1550, rd: 100, score: 0 },
     { rating: 1700, rd: 300, score: 0 },
   ]);
-  near("rating lands on the published value", out.rating, 1464.1, 0.6);
-  near("deviation lands on the published value", out.rd, 151.4, 0.6);
+  near("rating lands on 1464.06", out.rating, 1464.06, 0.1);
+  near("deviation lands on 151.52", out.rd, 151.52, 0.1);
+  near("volatility lands on 0.05999", out.volatility, 0.05999, 0.00005);
 }
 
-console.log("\nGlicko — behaviour that matters in play");
+console.log("\nWhat a player actually feels");
 {
-  const newcomer = { rating: START_RATING, rd: START_RD };
-  const veteran = { rating: 1200, rd: 45 };
+  const newcomer = { rating: START_RATING, rd: START_RD, volatility: START_VOLATILITY };
+  const veteran  = { rating: 1200, rd: 45, volatility: 0.06 };
+  const strong   = { rating: 2100, rd: 45, volatility: 0.06 };
 
-  const nAfter = update(newcomer, [{ ...veteran, score: 1 }]);
-  const vAfter = update(veteran, [{ ...newcomer, score: 0 }]);
+  const first = update(newcomer, [{ ...veteran, score: 1 }]);
+  near("a newcomer's first win moves them a long way", first.rating - newcomer.rating, 175, 25);
+  check("and their uncertainty shrinks", first.rd < START_RD, true);
 
-  near("a newcomer moves a long way on one win", nAfter.rating - newcomer.rating, 175, 25);
-  near("the veteran they beat barely moves", Math.abs(vAfter.rating - veteran.rating), 5, 5);
-  check("the newcomer's uncertainty shrinks", nAfter.rd < START_RD, true);
-  check("a draw between equals changes nothing",
-    Math.round(update({ rating: 1500, rd: 50 }, [{ rating: 1500, rd: 50, score: 0.5 }]).rating), 1500);
+  const beaten = update(veteran, [{ ...newcomer, score: 0 }]);
+  near("the established player they beat barely moves", Math.abs(beaten.rating - veteran.rating), 4, 4);
+
+  const crush = update(strong, [{ ...veteran, score: 1 }]);
+  near("beating someone 900 points weaker is worth nothing", crush.rating - strong.rating, 0.3, 1.2);
+
+  // The system is confident about a settled player, so even a shock
+  // result moves them slowly. That confidence is the whole point —
+  // it is what stops ratings yo-yoing.
+  const upset = update(veteran, [{ ...strong, score: 1 }]);
+  near("a settled player's huge upset is still a modest gain", upset.rating - veteran.rating, 16, 8);
+  check("but the upset makes them less predictable", upset.volatility > veteran.volatility, true);
+
+  const level = update({ rating: 1500, rd: 50, volatility: 0.06 }, [{ rating: 1500, rd: 50, score: 0.5 }]);
+  near("a draw between equals changes nothing", level.rating, 1500, 0.5);
+
   check("a new player is provisional", isProvisional(START_RD), true);
   check("an established player is not", isProvisional(45), false);
-  check("idleness widens the deviation", decayRd(50, 20) > 50, true);
-  check("deviation is capped at unrated", decayRd(50, 10_000), 350);
-  near("even odds against yourself", expectedScore(1500, 1500, 50), 0.5, 0.001);
-  check("a certain opponent carries full weight", g(0) , 1);
+  check("a rating never falls through the floor",
+    update({ rating: 120, rd: 300, volatility: 0.06 }, [{ rating: 2400, rd: 40, score: 0 }]).rating >= 100, true);
+}
+
+console.log("\nInactivity");
+{
+  const idle = decay({ rating: 1600, rd: 50, volatility: 0.06 }, 40);
+  check("sitting out widens the deviation", idle.rd > 50, true);
+  check("but never moves the rating itself", Math.round(idle.rating), 1600);
+  check("deviation is capped at unrated", decay({ rating: 1600, rd: 50, volatility: 0.06 }, 100_000).rd, 350);
+  check("an empty rating period only adds uncertainty",
+    update({ rating: 1600, rd: 60, volatility: 0.06 }, []).rd > 60, true);
+}
+
+console.log("\nStakes, shown before a challenge is accepted");
+{
+  const s = stakes({ rating: 1500, rd: 60, volatility: 0.06 }, { rating: 1520, rd: 60, volatility: 0.06 });
+  check("a win is positive", s.win > 0, true);
+  check("a loss is negative", s.loss < 0, true);
+  check("beating a stronger player is worth more than losing costs", Math.abs(s.win) > Math.abs(s.loss), true);
 }
 
 console.log("\nTime controls — Lichess thresholds");
@@ -67,8 +102,8 @@ console.log("\nTime controls — Lichess thresholds");
   check("falls back on nonsense", JSON.stringify(parseId("")), JSON.stringify({ base: 600, increment: 0 }));
   check("labels a plain clock", label(600, 0), "10 min");
   check("labels an increment clock", label(900, 10), "15 | 10");
-  check("every preset classifies", PRESETS.every(p => p.category === classify(p.base, p.increment)), true);
-  check("preset ids round-trip", PRESETS.every(p => parseId(p.id).base === p.base), true);
+  check("every preset classifies", PRESETS.every((p) => p.category === classify(p.base, p.increment)), true);
+  check("preset ids round-trip", PRESETS.every((p) => parseId(p.id).base === p.base), true);
 
   check("arbiter's 15+10 becomes seconds", fromMinuteSpec("15+10", "RAPID"), "900+10");
   check("a bare 90 means ninety minutes", fromMinuteSpec("90", "CLASSICAL"), "5400+0");

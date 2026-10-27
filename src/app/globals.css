@@ -253,3 +253,74 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   font-variant-numeric: tabular-nums;
   vertical-align: baseline;
 }
+
+/* ---------- the game screen ----------
+   A game is a focused mode, not a document. On a phone it fills the
+   viewport exactly once: board, both clocks and the actions visible
+   together, nothing scrolling, and the app chrome out of the way.
+   dvh rather than vh so Safari's collapsing URL bar cannot clip it. */
+
+@media (max-width: 1099px) {
+  body:has(.ingame) .appbar,
+  body:has(.ingame) .mobilenav { display: none; }
+  body:has(.ingame) main.shell { padding: 0; min-height: 0; }
+  body:has(.ingame) .page-bottom { padding-bottom: 0; }
+  body:has(.ingame) { overflow: hidden; overscroll-behavior: none; }
+
+  .gameroom.ingame {
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+    gap: 0;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+  }
+  .gameroom.ingame .gameroom-board {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-height: 0;
+  }
+  .gameroom.ingame .gameroom-panel { display: none; }
+}
+
+@media (min-width: 1100px) {
+  .game-header, .game-actions { display: none; }
+}
+
+/* The board takes every pixel the bars and the action row do not. */
+.board-slot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s2) var(--s3);
+}
+.board-fit {
+  aspect-ratio: 1 / 1;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 14px;
+  transition: box-shadow 200ms var(--ease);
+}
+/* Your turn, said without words. */
+.board-fit.yours { box-shadow: 0 0 0 2px var(--gold), 0 22px 60px rgba(0,0,0,0.55); }
+
+@media (min-width: 1100px) {
+  .board-slot { padding: 0; }
+  .board-fit { height: auto; width: 100%; }
+}
+
+@keyframes clock-urgent {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.72; }
+}
+.clock-urgent { animation: clock-urgent 1s ease-in-out infinite; }
+
+/* Shown only where there is room for it. */
+.desktop-only { display: none; }
+@media (min-width: 1100px) { .desktop-only { display: block; } }
