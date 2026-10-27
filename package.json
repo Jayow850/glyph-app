@@ -4,12 +4,14 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3002",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && prisma db push --accept-data-loss && next build",
+    "build:local": "prisma generate && next build",
     "start": "next start",
     "db:push": "prisma db push",
     "db:seed": "node --experimental-strip-types prisma/seed.ts",
     "socket": "node --experimental-strip-types src/lib/realtime/socket-server.ts",
-    "test:engine": "node --experimental-strip-types lib/test-tournament.ts"
+    "test:engine": "node --experimental-strip-types lib/test-tournament.ts",
+    "test:rating": "node --experimental-strip-types lib/test-rating.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",

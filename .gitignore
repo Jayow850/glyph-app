@@ -1,6 +1,9 @@
 node_modules/
 .env
 .env.local
+.env.vercel
+.env*.local
+.vercel
 .next/
 out/
 build/
