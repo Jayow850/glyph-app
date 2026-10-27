@@ -42,6 +42,7 @@
     "lib/test-engine.ts",
     "lib/test-gameloop.ts",
     "lib/test-money.ts",
-    "lib/test-tournament.ts"
+    "lib/test-tournament.ts",
+    "lib/test-rating.ts"
   ]
 }

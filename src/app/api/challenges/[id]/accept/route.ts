@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
+import { parseTimeControl } from "@/lib/game-clock";
+import { classify, parseId } from "@engine/game/timeControls";
 
 /** Accepting a challenge creates the LiveGame both players will play in. */
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -24,8 +26,24 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const whiteId = challengerIsWhite ? challenge.fromId : challenge.toId;
   const blackId = challengerIsWhite ? challenge.toId : challenge.fromId;
 
+  const { initialMs, incrementMs } = parseTimeControl(challenge.timeControl);
+  const { base, increment } = parseId(challenge.timeControl);
+
   const game = await prisma.liveGame.create({
-    data: { whiteId, blackId, rated: challenge.rated, timeControl: challenge.timeControl },
+    data: {
+      whiteId,
+      blackId,
+      rated: challenge.rated,
+      timeControl: challenge.timeControl,
+      category: classify(base, increment),
+      whiteMs: initialMs,
+      blackMs: initialMs,
+      incrementMs,
+      lastMoveAt: new Date(),
+      // Nothing ticks until White actually plays. Two players who open
+      // the game ten minutes apart should still get a fair clock.
+      clockStarted: false,
+    },
   });
 
   await prisma.challenge.update({

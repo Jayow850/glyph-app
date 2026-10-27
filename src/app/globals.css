@@ -7,6 +7,13 @@
    8px spacing grid. Locked content edges. Uniform cards.
    Gold is the crown. Never pure white or black. */
 
+/* Board surface. The page is a dark room; the board is the lit object
+   on the table. Overridden at runtime by the board picker. */
+:root {
+  --sq-light: #D3DAC9;
+  --sq-dark: #5E7A63;
+}
+
 body {
   @apply bg-night text-ivory font-body antialiased;
   letter-spacing: -0.01em;
@@ -40,6 +47,40 @@ body {
   .mobilenav { display: none; }
 }
 
+/* §6 — the game room.
+   A game is not a feed post: it needs the whole table. On a phone the
+   board leads and everything else stacks under it. On a wide screen the
+   room claims the feed column and the right rail together — a board you
+   can actually see, with clocks, moves and chat alongside it instead of
+   scrolling somewhere below the fold. */
+.gameroom { display: flex; flex-direction: column; gap: 14px; }
+.gameroom-board { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.gameroom-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+@media (min-width: 1100px) {
+  .layout:has(.gameroom) {
+    grid-template-columns: 240px minmax(0, 1fr);
+    max-width: 1440px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .layout:has(.gameroom) .shell { max-width: none; }
+  .layout:has(.gameroom) > .rail:last-of-type { display: none; }
+
+  .gameroom {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 400px;
+    gap: 24px;
+    align-items: start;
+  }
+  .gameroom-board {
+    position: sticky;
+    top: 72px;
+    max-width: 680px;
+    justify-self: center;
+  }
+}
+
 /* §3 — identical card system: 20px pad, 16px radius, #16161A */
 .card {
   background: #16161A;
@@ -49,6 +90,9 @@ body {
   transition: transform 220ms ease-out, box-shadow 220ms ease-out;
 }
 .card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(212,175,55,0.07); }
+
+/* Furniture inside the game room should sit still under the cursor */
+.gameroom .card:hover { transform: none; box-shadow: none; }
 
 .hairline { height: 1px; background: rgba(255,255,255,0.06); }
 .digits { font-variant-numeric: tabular-nums; }

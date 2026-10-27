@@ -2,6 +2,7 @@ import { prisma } from "../prisma";
 import { notify } from "./notifications";
 import { invalidate } from "../redis";
 import { ratePair, type GameOutcome, type RatingState } from "@engine/rating/elo";
+import { sansToPgn } from "@engine/game/pgn";
 import type { MatchResult } from "@prisma/client";
 
 /**
@@ -187,4 +188,55 @@ export async function ruleDispute(opts: { matchId: string; arbiterId: string; re
     data: { userId: opts.arbiterId, action: "DISPUTE_RULED", entity: "Match", entityId: opts.matchId, metadata: { result: opts.result, ruling: opts.ruling } },
   });
   return confirmAndRate(opts.matchId, opts.result, "ARBITER_RULED");
+}
+
+/**
+ * A board played on GLYPH settles itself.
+ *
+ * The dual-confirmation flow above exists because over-the-board results
+ * are hearsay — two players report, and an arbiter rules when they
+ * disagree. A game played here is different: the server refereed every
+ * move, so there is nobody to disagree with and the result is already
+ * official.
+ *
+ * Idempotent, because the move route, the resignation route and the
+ * flag-fall poll can all arrive here for the same game.
+ */
+export async function settleMatchFromLiveGame(
+  matchId: string,
+  result: MatchResult,
+  pgn?: string,
+) {
+  const match = await prisma.match.findUnique({ where: { id: matchId } });
+  if (!match) return null;
+  if (match.resultStatus === "CONFIRMED" || match.resultStatus === "ARBITER_RULED") return null;
+  if (!match.whiteId || !match.blackId) return null;
+  return confirmAndRate(matchId, result, "CONFIRMED", pgn);
+}
+
+/** Called when any live game ends; does nothing unless it was a tournament board. */
+export async function settleTournamentBoard(liveGameId: string) {
+  const game = await prisma.liveGame.findUnique({
+    where: { id: liveGameId },
+    include: {
+      match: { include: { round: true } },
+      white: { include: { profile: true } },
+      black: { include: { profile: true } },
+    },
+  });
+  if (!game?.match) return null;
+  if (game.status !== "FINISHED" || !game.result) return null;
+
+  const result: MatchResult =
+    game.result === "1-0" ? "WHITE_WIN" : game.result === "0-1" ? "BLACK_WIN" : "DRAW";
+
+  const pgn = sansToPgn(game.sans, {
+    Event: "GLYPH tournament",
+    Round: String(game.match.round.number),
+    White: game.white.profile?.fullName ?? "White",
+    Black: game.black.profile?.fullName ?? "Black",
+    Result: game.result,
+  });
+
+  return settleMatchFromLiveGame(game.match.id, result, pgn);
 }

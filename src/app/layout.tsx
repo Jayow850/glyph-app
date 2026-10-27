@@ -1,6 +1,8 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
+import { auth } from "@/lib/auth";
+import { ChallengeWatcher } from "@/components/ChallengeWatcher";
 
 export const metadata: Metadata = {
   title: { default: "GLYPH — Where Chess People Live", template: "%s · GLYPH" },
@@ -13,16 +15,29 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-const NAV = [
+type NavItem = {
+  href: string;
+  icon?: string;
+  label?: string;
+  fab?: boolean;
+  /** Desktop rail only — the mobile bar stays at five targets. */
+  railOnly?: boolean;
+};
+
+const NAV: NavItem[] = [
   { href: "/feed", icon: "⌂", label: "Home" },
   { href: "/play", icon: "♟", label: "Play" },
-  //{ href: "/clips", icon: "▶", label: "Clips" },
+  { href: "/tournaments", icon: "♛", label: "Tournaments", railOnly: true },
+  { href: "/challenges", icon: "⚔", label: "Challenges", railOnly: true },
   { href: "/compose", fab: true },
   { href: "/clubs", icon: "♜", label: "Clubs" },
   { href: "/profile", icon: "◉", label: "Profile" },
 ];
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const session = await auth();
+  const signedIn = Boolean((session?.user as { id?: string })?.id);
+
   return (
     <html lang="en" className="dark">
       <body>
@@ -40,6 +55,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </div>
         </header>
+
+        {/* Challenges can arrive while you are anywhere in the app. */}
+        {signedIn && <ChallengeWatcher />}
 
         {/* §1 — mobile: locked single column; desktop: centered 3-column grid */}
         <div className="layout">
@@ -63,7 +81,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <aside className="rail" style={{ paddingTop: 16 }}>
             <div className="card" style={{ position: "sticky", top: 72 }}>
               <p className="section-label" style={{ marginBottom: 8 }}>Move of the day</p>
-              <p style={{ fontSize: 13 }} className="text-ivory-meta">Solve today's puzzle to keep the flame. 🔥</p>
+              <p style={{ fontSize: 13 }} className="text-ivory-meta">Solve today&apos;s puzzle to keep the flame. 🔥</p>
             </div>
           </aside>
         </div>
@@ -74,7 +92,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           style={{ background: "rgba(13,13,15,0.94)", backdropFilter: "blur(8px)", borderTop: "1px solid rgba(212,175,55,0.08)" }}
         >
           <div className="shell" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 8, paddingBottom: 8 }}>
-            {NAV.map((n) =>
+            {NAV.filter((n) => !n.railOnly).map((n) =>
               n.fab ? (
                 <Link key={n.href} href={n.href}
                   className="bg-gold text-night"

@@ -170,6 +170,8 @@ enum LiveGameStatus {
 // ---------------- IDENTITY ----------------
 
 model User {
+  glyphRatings GlyphRating[] @relation("GlyphRatings")
+  gameMessages GameMessage[] @relation("GameMessages")
   id             String   @id @default(cuid())
   email          String   @unique
   passwordHash   String?
@@ -432,6 +434,8 @@ model Match {
   submittedById String?
   clientTimestamp DateTime?
   confirmedAt  DateTime?
+  liveGameId   String?      @unique
+  liveGame     LiveGame?    @relation(fields: [liveGameId], references: [id])
   game         Game?
   dispute      Dispute?
 
@@ -485,6 +489,7 @@ model Challenge {
   rated       Boolean  @default(true)
   status      String   @default("pending")
   liveGameId  String?
+  message     String?
   createdAt   DateTime @default(now())
 
   @@index([toId, status])
@@ -504,6 +509,19 @@ model LiveGame {
   endReason   String?
   timeControl String         @default("900+10")
   rated       Boolean        @default(true)
+  whiteMs     Int            @default(900000)
+  blackMs     Int            @default(900000)
+  incrementMs Int            @default(10000)
+  lastMoveAt  DateTime       @default(now())
+  drawOfferBy String?
+  category    SpeedCategory  @default(RAPID)
+  clockStarted Boolean       @default(false)
+  whiteRatingBefore Int?
+  blackRatingBefore Int?
+  whiteRatingDelta  Int?
+  blackRatingDelta  Int?
+  messages    GameMessage[]
+  match       Match?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
@@ -819,4 +837,51 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([clubId, createdAt])
+}
+// ---------------- GLYPH RATINGS & GAME CHAT ----------------
+
+enum SpeedCategory {
+  BULLET
+  BLITZ
+  RAPID
+  CLASSICAL
+}
+
+enum GameMessageKind {
+  CHAT
+  QUICK
+  SYSTEM
+}
+
+/**
+ * Platform-wide rating, one row per speed. Glicko-1: the number is only
+ * half the story, `rd` is how sure we are of it. Provisional while
+ * rd > 110, which is how a new player stops swinging after ~15 games.
+ */
+model GlyphRating {
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation("GlyphRatings", fields: [userId], references: [id], onDelete: Cascade)
+  category     SpeedCategory
+  rating       Float         @default(1200)
+  rd           Float         @default(350)
+  games        Int           @default(0)
+  peak         Int           @default(1200)
+  lastPlayedAt DateTime?
+
+  @@unique([userId, category])
+  @@index([category, rating])
+}
+
+model GameMessage {
+  id        String          @id @default(cuid())
+  gameId    String
+  game      LiveGame        @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User            @relation("GameMessages", fields: [userId], references: [id], onDelete: Cascade)
+  body      String
+  kind      GameMessageKind @default(CHAT)
+  createdAt DateTime        @default(now())
+
+  @@index([gameId, createdAt])
 }

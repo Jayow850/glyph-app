@@ -8,6 +8,6 @@ export default async function HandleProfilePage({ params }: { params: Promise<{ 
   if (!profile) return <p style={{ paddingTop: 32 }}>No player with that handle.</p>;
 
   const session = await auth();
-  const meId = (session?.user as { id?: string })?.id;
-  return <ProfileView userId={profile.userId} isMe={meId === profile.userId} />;
+  const meId = (session?.user as { id?: string })?.id ?? null;
+  return <ProfileView userId={profile.userId} isMe={meId === profile.userId} viewerId={meId} />;
 }

@@ -1,8 +1,13 @@
 /** Signature element: rating change rendered like scoresheet notation. */
 export function RatingDelta({ delta }: { delta: number }) {
-  if (delta === 0) return <span className="delta text-ivory-dim">±0</span>;
+  if (delta === 0) {
+    return <span className="digits text-ivory-meta" style={{ fontSize: 13 }}>±0</span>;
+  }
   return (
-    <span className={`delta ${delta > 0 ? "delta-up" : "delta-down"}`}>
+    <span
+      className="digits"
+      style={{ fontSize: 13, fontWeight: 600, color: delta > 0 ? "#7FB069" : "#B0575A" }}
+    >
       {delta > 0 ? "+" : ""}{delta}
     </span>
   );
@@ -10,8 +15,9 @@ export function RatingDelta({ delta }: { delta: number }) {
 
 export function RatingBadge({ rating, provisional }: { rating: number; provisional?: boolean }) {
   return (
-    <span className="font-score text-sm tabular-nums text-ivory">
-      {rating}{provisional && <sup className="text-ivory-dim">?</sup>}
+    <span className="digits" style={{ fontSize: 13, color: "#8A8A93" }}>
+      {rating}
+      {provisional && <sup style={{ color: "#8A8A93" }}>?</sup>}
     </span>
   );
 }

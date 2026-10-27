@@ -4,6 +4,7 @@ import { notify } from "./notifications";
 import { generateSwissPairings, type SwissPlayer } from "@engine/pairing/swiss";
 import { computeStandings, type PlayerResultRow, type TiebreakCode } from "@engine/pairing/tiebreaks";
 import { performanceRating, type GameOutcome } from "@engine/rating/elo";
+import { fromMinuteSpec, parseId, classify, type SpeedCategory } from "@engine/game/timeControls";
 import { awardTournamentAchievements } from "./achievements";
 
 /** Load tournament players into the pairing engine's shape. */
@@ -64,17 +65,49 @@ export async function pairNextRound(tournamentId: string) {
     data: { tournamentId, number: nextNumber, startsAt: new Date() },
   });
 
+  // Every board becomes a real game on a real clock. "15+10" the way an
+  // arbiter writes it, translated into the seconds the board runs on.
+  const timeControl = fromMinuteSpec(t.timeControlDetail, t.timeControl as SpeedCategory);
+  const { base, increment } = parseId(timeControl);
+  const category = classify(base, increment);
+  const initialMs = base * 1000;
+  const incrementMs = increment * 1000;
+
   for (const p of pairings) {
+    let liveGameId: string | null = null;
+
+    if (!p.isBye && p.blackId) {
+      const game = await prisma.liveGame.create({
+        data: {
+          whiteId: p.whiteId,
+          blackId: p.blackId,
+          timeControl,
+          category,
+          whiteMs: initialMs,
+          blackMs: initialMs,
+          incrementMs,
+          lastMoveAt: new Date(),
+          clockStarted: false,
+          // The tournament runs its own rating with its own K-factor, so
+          // these boards leave the open GLYPH ladder alone.
+          rated: false,
+        },
+      });
+      liveGameId = game.id;
+    }
+
     await prisma.match.create({
       data: {
         roundId: round.id,
         boardNumber: p.boardNumber,
         whiteId: p.whiteId,
         blackId: p.blackId,
+        liveGameId,
         result: p.isBye ? (p.byeType === "HALF" ? "BYE_HALF" : "BYE_FULL") : "PENDING",
         resultStatus: p.isBye ? "CONFIRMED" : "PENDING",
       },
     });
+
     if (p.isBye) {
       const pts = p.byeType === "HALF" ? 0.5 : 1;
       await prisma.tournamentPlayer.update({
@@ -93,7 +126,7 @@ export async function pairNextRound(tournamentId: string) {
     userIds: players.map((p) => p.userId),
     type: "PAIRING",
     title: `Round ${nextNumber} pairings are out — ${t.name}`,
-    linkUrl: `/tournaments/${tournamentId}/pairings`,
+    linkUrl: `/tournaments/${tournamentId}`,
     email: true,
   });
   await invalidate(`standings:${tournamentId}`);
