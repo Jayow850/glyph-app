@@ -1,61 +1,179 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* GLYPH — The Board at Midnight · Precision system
-   8px spacing grid. Locked content edges. Uniform cards.
-   Gold is the crown. Never pure white or black. */
+/* ============================================================
+   GLYPH — "The Board at Midnight"
+   One token layer. After this file, nothing in the app should
+   introduce a raw hex, a raw px type size, or a spacing value
+   off the 4pt grid.
+   Fonts are self-hosted via next/font/local in layout.tsx —
+   there is deliberately no @import here. A remote font import
+   is render-blocking, and fonts.googleapis.com is unreachable
+   from some of the places GLYPH is used.
+   ============================================================ */
 
-/* Board surface. The page is a dark room; the board is the lit object
-   on the table. Overridden at runtime by the board picker. */
 :root {
+  color-scheme: dark;
+
+  /* surfaces */
+  --bg: #0D0D0F;
+  --surface: #141417;
+  --surface-2: #1C1C21;
+  --border: #26262C;
+  --border-gold: rgba(212, 175, 55, 0.10);
+  --overlay: rgba(13, 13, 15, 0.92);
+
+  /* ink */
+  --text: #F5F1E8;
+  --text-muted: #8A8A94;
+  --text-dim: #5E5E68;
+
+  /* accent and state */
+  --gold: #D4AF37;
+  --gold-hover: #E8C960;
+  --gold-wash: rgba(212, 175, 55, 0.14);
+  --gold-ink: #0D0D0F;
+  --success: #7FB069;
+  --danger: #C96A6D;        /* lifted from #B0575A, which fails 4.5:1 on --bg */
+  --danger-solid: #8E3B3E;
+  --draw: #9BA4B0;
+
+  /* board surface — the lit object in a dark room */
   --sq-light: #D3DAC9;
   --sq-dark: #5E7A63;
+
+  /* spacing: 4pt grid, nothing between */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px; --s5: 20px;
+  --s6: 24px; --s8: 32px; --s10: 40px; --s12: 48px; --s16: 64px;
+
+  /* radii */
+  --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 24px; --r-full: 999px;
+
+  /* phone-first type scale */
+  --t-display: 30px;   --lh-display: 1.15;  --ls-display: -0.02em;
+  --t-h1: 24px;        --lh-h1: 1.2;        --ls-h1: -0.015em;
+  --t-h2: 20px;        --lh-h2: 1.25;
+  --t-body: 16px;      --lh-body: 1.55;
+  --t-secondary: 14px; --lh-secondary: 1.5;
+  --t-caption: 13px;   --lh-caption: 1.4;
+
+  /* the smallest thing a thumb may be asked to hit */
+  --tap: 44px;
+
+  --ease: cubic-bezier(0.22, 0.8, 0.36, 1);
 }
+
+/* Light palette — designed, not inverted. Not yet switchable;
+   the component sweep that light mode needs comes next. */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #FAF8F4;            /* warm ivory; pure white breaks the brand warmth */
+  --surface: #FFFFFF;
+  --surface-2: #F2EFE9;
+  --border: #E4DFD6;
+  --border-gold: rgba(154, 123, 31, 0.18);
+  --overlay: rgba(250, 248, 244, 0.92);
+
+  --text: #16161A;
+  --text-muted: #6B6B74;
+  --text-dim: #9A9AA4;
+
+  --gold: #9A7B1F;          /* the dark-mode gold fails contrast on light */
+  --gold-hover: #7E641A;
+  --gold-wash: rgba(154, 123, 31, 0.12);
+  --gold-ink: #FFFFFF;
+  --success: #3F7A33;
+  --danger: #A33B3F;
+  --danger-solid: #A33B3F;
+  --draw: #5F6874;
+}
+
+/* ---------- base ---------- */
+
+html { -webkit-text-size-adjust: 100%; }
 
 body {
-  @apply bg-night text-ivory font-body antialiased;
-  letter-spacing: -0.01em;
-  line-height: 1.55;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body), -apple-system, "Segoe UI", system-ui, sans-serif;
+  font-size: var(--t-body);
+  line-height: var(--lh-body);
+  letter-spacing: -0.005em;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* §1 — one shell shared by header, tabs, feed, nav: locked edges */
+/* Fraunces is for display moments only — never body, buttons or nav. */
+.font-display,
+h1, h2, h3 {
+  font-family: var(--font-display), Georgia, "Times New Roman", serif;
+  font-optical-sizing: auto;
+}
+
+/* ---------- type scale ---------- */
+
+.t-display { font-size: var(--t-display); line-height: var(--lh-display); letter-spacing: var(--ls-display); font-weight: 600; }
+.t-h1      { font-size: var(--t-h1);      line-height: var(--lh-h1);      letter-spacing: var(--ls-h1);      font-weight: 600; }
+.t-h2      { font-size: var(--t-h2);      line-height: var(--lh-h2);      font-weight: 600; }
+.t-body    { font-size: var(--t-body);    line-height: var(--lh-body); }
+.t-secondary { font-size: var(--t-secondary); line-height: var(--lh-secondary); color: var(--text-muted); }
+.t-caption { font-size: var(--t-caption); line-height: var(--lh-caption); letter-spacing: 0.01em; }
+
+.digits { font-variant-numeric: tabular-nums; }
+
+.section-label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* ---------- shell ---------- */
+
 .shell {
   width: 100%;
   max-width: 600px;
   margin: 0 auto;
-  padding-left: 16px;
-  padding-right: 16px;
+  padding-left: var(--s4);
+  padding-right: var(--s4);
   box-sizing: border-box;
 }
 
-/* §1 — desktop 3-column grid, feed centered, never left-drifting */
 .layout { display: block; }
 .rail { display: none; }
 .mobilenav { display: block; }
+
 @media (min-width: 1100px) {
   .layout {
     display: grid;
     grid-template-columns: 280px minmax(0, 600px) 320px;
     justify-content: center;
-    gap: 24px;
-    padding: 0 16px;
+    gap: var(--s6);
+    padding: 0 var(--s4);
   }
   .layout .shell { padding-left: 0; padding-right: 0; }
   .rail { display: block; }
   .mobilenav { display: none; }
 }
 
-/* §6 — the game room.
-   A game is not a feed post: it needs the whole table. On a phone the
-   board leads and everything else stacks under it. On a wide screen the
-   room claims the feed column and the right rail together — a board you
-   can actually see, with clocks, moves and chat alongside it instead of
-   scrolling somewhere below the fold. */
-.gameroom { display: flex; flex-direction: column; gap: 14px; }
-.gameroom-board { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.gameroom-panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* ---------- safe areas ---------- */
+
+.appbar { padding-top: env(safe-area-inset-top, 0px); }
+.navbar { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.page-bottom { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+
+@media (min-width: 1100px) {
+  .page-bottom { padding-bottom: var(--s12); }
+}
+
+/* ---------- the game room ---------- */
+
+.gameroom { display: flex; flex-direction: column; gap: var(--s3); }
+.gameroom-board { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.gameroom-panel { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
 
 @media (min-width: 1100px) {
   .layout:has(.gameroom) {
@@ -70,7 +188,7 @@ body {
   .gameroom {
     display: grid;
     grid-template-columns: minmax(0, 1fr) 400px;
-    gap: 24px;
+    gap: var(--s6);
     align-items: start;
   }
   .gameroom-board {
@@ -81,46 +199,57 @@ body {
   }
 }
 
-/* §3 — identical card system: 20px pad, 16px radius, #16161A */
+/* ---------- surfaces ---------- */
+
 .card {
-  background: #16161A;
-  border: 1px solid rgba(212,175,55,0.08);
-  border-radius: 16px;
-  padding: 20px;
-  transition: transform 220ms ease-out, box-shadow 220ms ease-out;
+  background: var(--surface);
+  border: 1px solid var(--border-gold);
+  border-radius: var(--r-lg);
+  padding: var(--s5);
 }
-.card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(212,175,55,0.07); }
 
-/* Furniture inside the game room should sit still under the cursor */
-.gameroom .card:hover { transform: none; box-shadow: none; }
+/* Elevation on dark comes from borders and surface lifts, not shadow. */
+@media (hover: hover) {
+  .card.lift:hover { border-color: var(--border); background: var(--surface-2); }
+}
 
-.hairline { height: 1px; background: rgba(255,255,255,0.06); }
-.digits { font-variant-numeric: tabular-nums; }
-.section-label { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: #8A8A93; }
+.hairline { height: 1px; background: var(--border); }
 
-/* Inline notation chip — sits on the text baseline (§3) */
+/* ---------- interaction ---------- */
+
+button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
+
+.press { transition: transform 160ms var(--ease), opacity 160ms var(--ease); }
+.press:active { transform: scale(0.98); opacity: 0.85; }
+
+.tap { min-width: var(--tap); min-height: var(--tap); }
+
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* ---------- motion ---------- */
+
+@keyframes cascade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.cascade { animation: cascade 320ms var(--ease) both; }
+
+@keyframes shimmer { from { opacity: 0.35; } to { opacity: 0.7; } }
+.skeleton {
+  background: var(--surface-2);
+  border-radius: var(--r-sm);
+  animation: shimmer 1.2s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+
+/* ---------- legacy chip, still used by post bodies ---------- */
+
 .notation-chip {
-  color: #D4AF37;
-  background: rgba(212,175,55,0.12);
-  padding: 4px 8px;
+  color: var(--gold);
+  background: var(--gold-wash);
+  padding: var(--s1) var(--s2);
   border-radius: 6px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   vertical-align: baseline;
 }
-
-@keyframes cascade { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.cascade { animation: cascade 320ms ease-out both; }
-@keyframes promote {
-  0% { transform: scale(1); }
-  40% { transform: scale(1.25) translateY(-3px); text-shadow: 0 0 16px rgba(212,175,55,0.7); }
-  100% { transform: scale(1); }
-}
-.promoting { animation: promote 300ms ease-out; }
-@keyframes shimmer { from { opacity: 0.35; } to { opacity: 0.7; } }
-.skeleton-square { animation: shimmer 1.2s ease-in-out infinite alternate; }
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; }
-}
-:focus-visible { outline: 2px solid #D4AF37; outline-offset: 2px; }
