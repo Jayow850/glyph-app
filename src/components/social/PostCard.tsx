@@ -1,7 +1,9 @@
 "use client";
 import { useState } from "react";
-import { PawnLike } from "./PawnLike";
 import { EloChip } from "./EloChip";
+import { Avatar } from "@/components/ui/Avatar";
+import { Icon } from "@/components/ui/Icon";
+import { RailMark, RAIL_COLOR } from "@/components/game/RailMarks";
 import { CommentThread } from "./CommentThread";
 import { Board, fenToFrame } from "./Board";
 import { GameReplay } from "./GameReplay";
@@ -51,28 +53,21 @@ export function PostCard({ post, meLiked = false }: { post: PostDto; meLiked?: b
     <article className="card cascade">
       {/* Header grid: 44px avatar | name/handle column | badge pinned right */}
       <header style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div
-          style={{
-            width: 44, height: 44, borderRadius: "50%", display: "grid", placeItems: "center",
-            background: "#1C1C21", border: "1px solid rgba(212,175,55,0.08)", fontSize: 20, flexShrink: 0,
-          }}
-        >
-          ♟
-        </div>
+        <Avatar name={post.author.profile?.fullName ?? post.author.profile?.handle ?? "Player"} size={40} />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p className="font-display" style={{ fontSize: 16, fontWeight: 600, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          <p className="t-row" style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {post.author.profile?.title && post.author.profile.title !== "NONE" && (
               <span className="text-gold" style={{ marginRight: 4 }}>{post.author.profile.title}</span>
             )}
             {post.author.profile?.fullName ?? "player"}
             {elo && <span style={{ marginLeft: 8 }}><EloChip elo={elo} /></span>}
           </p>
-          <p style={{ fontSize: 14, lineHeight: 1.3 }} className="text-ivory-meta">
+          <p className="t-rowmeta">
             @{post.author.profile?.handle}{post.club ? ` · ${post.club.name}` : ""}
           </p>
         </div>
         {post.type !== "TEXT" && post.type !== "PHOTO" && (
-          <span className="text-gold" style={{ fontSize: 10, letterSpacing: "0.08em", border: "1px solid rgba(212,175,55,0.15)", borderRadius: 999, padding: "4px 8px", flexShrink: 0 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", color: "var(--gold)", border: "1px solid var(--border-gold)", borderRadius: "var(--r-full)", padding: "4px 8px", flexShrink: 0 }}>
             {post.type === "LIVE" ? "● LIVE" : post.type}
           </span>
         )}
@@ -80,7 +75,7 @@ export function PostCard({ post, meLiked = false }: { post: PostDto; meLiked?: b
 
       {/* Body: 12px from header, 16px rhythm inside */}
       <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 16 }}>
-        {post.body && <p style={{ fontSize: 16, lineHeight: 1.55 }}>{post.body}</p>}
+        {post.body && <p className="t-body">{post.body}</p>}
 
         {post.type === "PHOTO" && post.mediaUrls.length > 0 && (
           <div style={{ display: "flex", gap: 8, overflowX: "auto", scrollSnapType: "x mandatory", borderRadius: 8 }}>
@@ -112,20 +107,49 @@ export function PostCard({ post, meLiked = false }: { post: PostDto; meLiked?: b
       {/* §4 — hairline divider, 16px both sides, then the reaction row */}
       <div className="hairline" style={{ marginTop: 16 }} />
       <footer style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-          <PawnLike liked={liked} count={pawns} onToggle={toggleLike} />
-          <span className="text-ivory-meta" style={{ ...reactionStyle, fontSize: 13 }}>
-            <span style={{ fontSize: 16 }}>👑</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--s5)" }}>
+          {/* One reaction language across GLYPH: the same chess marks
+              the rail uses. 👑 and 🔥 drew a different picture on every
+              platform and said nothing about chess. */}
+          <button
+            onClick={toggleLike}
+            aria-label="Respect"
+            style={{
+              ...reactionStyle, background: "none", border: "none", cursor: "pointer",
+              fontSize: 13, color: liked ? RAIL_COLOR.RESPECT : "var(--text-muted)",
+            }}
+          >
+            <RailMark kind="RESPECT" size={17} />
+            <span className="digits">{pawns}</span>
+          </button>
+
+          <span style={{ ...reactionStyle, fontSize: 13, color: "var(--text-muted)" }}>
+            <span style={{ color: RAIL_COLOR.BRILLIANT, display: "block" }}>
+              <RailMark kind="BRILLIANT" size={17} />
+            </span>
             <span className="digits">{brilliants}</span>
-            {gmApproved && <span className="font-display text-gold" style={{ marginLeft: 4 }}>GM-approved</span>}
+            {gmApproved && (
+              <span style={{ marginLeft: 4, color: "var(--gold)", fontWeight: 600 }}>GM-approved</span>
+            )}
           </span>
-          <span className="text-ivory-meta" style={{ ...reactionStyle, fontSize: 13 }}>
-            <span style={{ fontSize: 16 }}>🔥</span>
+
+          <span style={{ ...reactionStyle, fontSize: 13, color: "var(--text-muted)" }}>
+            <span style={{ color: RAIL_COLOR.NICE, display: "block" }}>
+              <RailMark kind="NICE" size={17} />
+            </span>
             <span className="digits">{fire}</span>
           </span>
         </div>
-        <button onClick={() => setShowComments(!showComments)} className="text-ivory-meta" style={{ ...reactionStyle, fontSize: 13, justifyContent: "flex-end" }}>
-          💬 <span className="digits">{post._count.comments}</span>
+        <button
+          onClick={() => setShowComments(!showComments)}
+          aria-label="Comments"
+          style={{
+            ...reactionStyle, background: "none", border: "none", cursor: "pointer",
+            fontSize: 13, color: "var(--text-muted)", justifyContent: "flex-end",
+          }}
+        >
+          <Icon name="chat" size={17} />
+          <span className="digits">{post._count.comments}</span>
         </button>
       </footer>
 
