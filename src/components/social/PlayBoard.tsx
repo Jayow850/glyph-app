@@ -20,7 +20,7 @@ export function PlayBoard({
   disabled = false,
   bare = false,
   onBrowse,
-  animMs = 130,
+  animMs = 90,
 }: {
   frame: string[];                 // 8 rank-strings, rank 8 first
   selected: number | null;         // 0–63 grid index (always white's orientation)

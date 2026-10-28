@@ -11,11 +11,17 @@ export function Sheet({
   open,
   onClose,
   title,
+  subtitle,
+  large = false,
   children,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
+  /** A muted line under the title, inside the same padded header. */
+  subtitle?: React.ReactNode;
+  /** Display-size title, for a sheet that is the moment rather than a menu. */
+  large?: boolean;
   children: ReactNode;
 }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -91,7 +97,22 @@ export function Sheet({
             padding: "var(--s3) var(--s4) var(--s2)",
           }}
         >
-          <h2 className="font-display" style={{ fontSize: "var(--t-h2)" }}>{title}</h2>
+          {/* The title lives in the header, which owns the padding. A
+              caller drawing its own heading in the scroll body ends up
+              underneath the drag handle — which is exactly what happened. */}
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <h2
+              className="font-display"
+              style={{
+                fontSize: large ? "var(--t-display)" : "var(--t-h2)",
+                lineHeight: 1.15,
+                letterSpacing: large ? "-0.02em" : undefined,
+              }}
+            >
+              {title}
+            </h2>
+            {subtitle && <p className="t-secondary" style={{ marginTop: 2 }}>{subtitle}</p>}
+          </div>
           <button
             onClick={onClose}
             aria-label="Close"

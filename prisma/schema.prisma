@@ -247,6 +247,8 @@ model Profile {
   lastSeenAt    DateTime?
   /** Hide the rail's reactions while you are playing. */
   railMuted     Boolean      @default(false)
+  /** Games walked out of. Clubs need this; serial abandoners ruin club play. */
+  abandons      Int          @default(0)
   updatedAt     DateTime     @updatedAt
 
   @@index([handle])
@@ -528,6 +530,9 @@ model LiveGame {
   blackRatingBefore Int?
   whiteRatingDelta  Int?
   blackRatingDelta  Int?
+  /** When each player was last seen at this board — see the claim route. */
+  whiteSeenAt  DateTime?
+  blackSeenAt  DateTime?
   undoFen      String?
   undoWhiteMs  Int?
   undoBlackMs  Int?

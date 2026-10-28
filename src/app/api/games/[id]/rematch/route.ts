@@ -49,6 +49,10 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       color: youWereWhite ? "black" : "white",
       message: "Rematch?",
       status: "pending",
+      // A rematch offer is a handshake across a board that is still
+      // warm. Left open it becomes a challenge arriving out of nowhere
+      // an hour later, which is a different thing entirely.
+      expiresAt: new Date(Date.now() + 60_000),
     },
   });
 

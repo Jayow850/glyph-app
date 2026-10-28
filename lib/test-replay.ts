@@ -12,7 +12,7 @@ export {}; // a module, so these names cannot collide with the DOM globals
  *   node --experimental-strip-types lib/test-replay.ts
  */
 
-import { positionAtPly, movePairs, materialTimeline, sharePlayerLed, Engine } from "./game/engine.ts";
+import { positionAtPly, movePairs, materialTimeline, sharePlayerLed, biggestSwing, Engine } from "./game/engine.ts";
 
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -110,6 +110,13 @@ check("Black never led", sharePlayerLed(PAWN_UP, "b"), 0);
 check("a level game credits nobody", sharePlayerLed(["e4", "e5"], "w"), 0);
 check("no moves, no share", sharePlayerLed([], "w"), 0);
 ok("the share is a percentage", sharePlayerLed(PAWN_UP, "w") <= 100);
+
+// ------------------------------------------------------------- swings
+
+check("a level game has no swing", biggestSwing(["e4", "e5"]), null);
+check("winning a pawn is a swing of one", biggestSwing(PAWN_UP)?.delta, 1);
+check("and it is credited to the ply it happened on", biggestSwing(PAWN_UP)?.ply, 5);
+check("no moves, no swing", biggestSwing([]), null);
 
 // ------------------------------------------------------------- report
 

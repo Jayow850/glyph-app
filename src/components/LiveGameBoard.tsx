@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Engine, positionAtPly, movePairs as pairsOf, sharePlayerLed } from "@engine/game/engine";
+import { Engine, positionAtPly, movePairs as pairsOf, sharePlayerLed, biggestSwing } from "@engine/game/engine";
 import { PlayBoard } from "@/components/social/PlayBoard";
 import { Piece, PieceMark } from "@/components/social/Pieces";
 import { BoardThemePicker } from "@/components/social/BoardThemePicker";
@@ -77,31 +77,57 @@ function formatClock(ms: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-function Clock({ ms, running, idle, increment }: { ms: number; running: boolean; idle: boolean; increment: number }) {
+/**
+ * The clock.
+ *
+ * It was 34px, which is bulk rather than emphasis: it ate the name
+ * column until "Magnus Ilori" rendered as "Magn…". A clock earns
+ * attention through contrast — a filled gold surface against a
+ * transparent one — not through size. 23px at standard, with a fixed
+ * width and tabular figures so the digits never jitter and the name
+ * beside it never moves.
+ *
+ * The size is adjustable because clock legibility is a documented
+ * accessibility failure in chess apps and nobody ships the option.
+ */
+function Clock({
+  ms, running, idle, increment, scale,
+}: {
+  ms: number; running: boolean; idle: boolean; increment: number; scale: number;
+}) {
   const low = ms <= 30_000;
   const urgent = ms <= 10_000 && running;
+  const size = Math.round(23 * scale);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-      {increment > 0 && (
-        <span className="digits" style={{ fontSize: 11, color: "var(--text-dim)" }}>+{increment / 1000}</span>
+    <span
+      className={`digits${urgent ? " clock-urgent" : ""}`}
+      style={{
+        display: "inline-flex", alignItems: "baseline", justifyContent: "center", gap: 5,
+        flexShrink: 0,
+        fontSize: size, fontWeight: 600, lineHeight: 1.1,
+        padding: `${Math.round(5 * scale)}px ${Math.round(10 * scale)}px`,
+        borderRadius: "var(--r-md)",
+        minWidth: Math.round(86 * scale),
+        background: running ? (low ? "var(--danger-solid)" : "var(--gold)") : "transparent",
+        color: running ? (low ? "#FFEFEF" : "var(--gold-ink)") : low && !idle ? "var(--danger)" : "var(--text-muted)",
+        transition: "background 180ms var(--ease), color 180ms var(--ease)",
+      }}
+    >
+      {running && (
+        <span style={{ alignSelf: "center", display: "block" }}>
+          <Icon name="clock" size={Math.round(14 * scale)} strokeWidth={2.2} />
+        </span>
       )}
-      <span
-        className={`digits${urgent ? " clock-urgent" : ""}`}
-        style={{
-          display: "inline-flex", alignItems: "center", gap: 6,
-          fontSize: 27, fontWeight: 600, padding: "5px 13px", borderRadius: "var(--r-md)",
-          minWidth: 112, justifyContent: "center",
-          background: running ? (low ? "var(--danger-solid)" : "var(--gold)") : "transparent",
-          color: running ? (low ? "#FFEFEF" : "var(--gold-ink)") : low && !idle ? "var(--danger)" : "var(--text-muted)",
-          border: running ? "1px solid transparent" : "1px solid var(--border)",
-          transition: "background 180ms var(--ease), color 180ms var(--ease)",
-        }}
-      >
-        {running && <Icon name="clock" size={15} strokeWidth={2} />}
-        {formatClock(ms)}
-      </span>
-    </div>
+      {formatClock(ms)}
+      {/* The increment belongs to the clock, not floating between the
+          name and it, which is where it was. */}
+      {increment > 0 && (
+        <span style={{ fontSize: Math.round(10 * scale), opacity: 0.65, fontWeight: 500 }}>
+          +{increment / 1000}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -120,11 +146,14 @@ function ColourPip({ white }: { white: boolean }) {
 }
 
 function PlayerBar({
-  white, name, rating, country, title, delta, captured, advantage, ms, running, idle, increment,
+  white, name, rating, country, title, delta, captured, advantage, ms, running, idle, increment, scale,
 }: {
   white: boolean; name: string; rating: string; country?: string | null; title?: string | null;
-  delta: number | null; captured: string[]; advantage: number;
-  ms: number; running: boolean; idle: boolean; increment: number;
+  /** Only ever non-null once the game is over. A rating change is a
+      result, and a result has no business in a live player bar. */
+  delta: number | null;
+  captured: string[]; advantage: number;
+  ms: number; running: boolean; idle: boolean; increment: number; scale: number;
 }) {
   return (
     <div
@@ -172,7 +201,7 @@ function PlayerBar({
         />
       </div>
 
-      <Clock ms={ms} running={running} idle={idle} increment={increment} />
+      <Clock ms={ms} running={running} idle={idle} increment={increment} scale={scale} />
     </div>
   );
 }
@@ -226,6 +255,8 @@ interface ServerState {
   ticking?: boolean; drawOfferBy?: "w" | "b" | null;
   whiteRatingDelta?: number | null; blackRatingDelta?: number | null;
   chat?: { id: string; userId: string; name: string; body: string; kind: string; at: number } | null;
+  rematch?: { id: string; fromId: string; expiresAt: number | null } | null;
+  opponentAwayMs?: number;
 }
 
 export function LiveGameBoard({
@@ -278,7 +309,10 @@ export function LiveGameBoard({
   const [previewPly, setPreviewPly] = useState<number | null>(null);
   const [promo, setPromo] = useState<{ from: number; to: number } | null>(null);
   const [railMuted, setRailMuted] = useState(false);
-  const [animMs, setAnimMs] = useState(130);
+  const [awayMs, setAwayMs] = useState(0);
+  const [offer, setOffer] = useState<{ id: string; fromId: string; expiresAt: number | null } | null>(null);
+  const [animMs, setAnimMs] = useState(90);
+  const [clockScale, setClockScale] = useState(1);
   const [reveal, setReveal] = useState(0);
   const [railCount, setRailCount] = useState(0);
 
@@ -312,12 +346,19 @@ export function LiveGameBoard({
     try {
       const saved = localStorage.getItem("glyph-anim");
       if (saved !== null) setAnimMs(Number(saved));
+      const cs = localStorage.getItem("glyph-clock");
+      if (cs !== null) setClockScale(Number(cs));
     } catch { /* blocked */ }
   }, []);
 
   function chooseAnim(ms: number) {
     setAnimMs(ms);
     try { localStorage.setItem("glyph-anim", String(ms)); } catch { /* blocked */ }
+  }
+
+  function chooseClock(scale: number) {
+    setClockScale(scale);
+    try { localStorage.setItem("glyph-clock", String(scale)); } catch { /* blocked */ }
   }
 
   // Counted once the game is over, which is the only time the thread
@@ -400,6 +441,9 @@ export function LiveGameBoard({
     setDrawOfferBy(data.drawOfferBy ?? null);
     if (data.whiteRatingDelta !== undefined) setWhiteDelta(data.whiteRatingDelta);
     if (data.blackRatingDelta !== undefined) setBlackDelta(data.blackRatingDelta);
+
+    setAwayMs(data.opponentAwayMs ?? 0);
+    setOffer(data.rematch ?? null);
 
     const msg = data.chat;
     if (msg && msg.id !== lastChatId.current) {
@@ -543,6 +587,19 @@ export function LiveGameBoard({
     }
   }
 
+  async function claim() {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/games/${gameId}/claim`, { method: "POST" });
+      if (res.ok) { router.refresh(); }
+      else setError("They came back — play on.");
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function rematch() {
     setBusy(true);
     try {
@@ -585,13 +642,15 @@ export function LiveGameBoard({
     rating: isWhite ? whiteRating : blackRating,
     country: isWhite ? whiteCountry : blackCountry,
     title: isWhite ? whiteTitle : blackTitle,
-    delta: isWhite ? whiteDelta : blackDelta,
+    // Hidden while the game is live — see PlayerBar.
+    delta: live ? null : isWhite ? whiteDelta : blackDelta,
     captured: isWhite ? blackLost : whiteLost,
     advantage: isWhite ? -edge : edge,
     ms: isWhite ? whiteMs : blackMs,
     running: live && ticking && turn === (isWhite ? "w" : "b") && !reviewing,
     idle: !ticking,
     increment: incrementMs,
+    scale: clockScale,
   });
 
   const drew = result === "1/2-1/2";
@@ -607,6 +666,7 @@ export function LiveGameBoard({
 
   // One line of context the player actually wants, computed once.
   const ledPercent = youAre === null ? null : sharePlayerLed(sans, youAre);
+  const swing = biggestSwing(sans);
   const seconds = Math.max(
     0,
     Math.round((new Date(updatedAt).getTime() - new Date(startedAt).getTime()) / 1000),
@@ -825,6 +885,62 @@ export function LiveGameBoard({
           </button>
         )}
 
+        {/* They have not been at the board for a minute, and it is
+            their move. Offered as a choice, never taken automatically:
+            a locked phone looks exactly like walking away. */}
+        {live && youAre && awayMs >= 60_000 && (
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: "var(--s2)", flexShrink: 0,
+              padding: "var(--s2) var(--s3)", background: "var(--surface-2)",
+              borderTop: "1px solid var(--border)",
+            }}
+          >
+            <p className="t-caption" style={{ flex: 1, color: "var(--text-muted)" }}>
+              {opponent} has been away {Math.floor(awayMs / 60_000)} min.
+            </p>
+            <button
+              onClick={claim}
+              disabled={busy}
+              className="press"
+              style={{ ...btn(true), flex: "0 0 auto", padding: "8px 14px", fontSize: 13 }}
+            >
+              Claim win
+            </button>
+          </div>
+        )}
+
+        {/* A rematch is a handshake, so both sides see the same offer
+            and the same clock on it. */}
+        {!live && offer && youId && (
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: "var(--s2)", flexShrink: 0,
+              padding: "var(--s2) var(--s3)", background: "var(--gold-wash)",
+              borderTop: "1px solid var(--gold)",
+            }}
+          >
+            <p className="t-caption" style={{ flex: 1 }}>
+              {offer.fromId === youId ? "Rematch offered" : `${opponent} wants a rematch`}
+              {offer.expiresAt && (
+                <span className="digits" style={{ color: "var(--text-muted)" }}>
+                  {" · "}{Math.max(0, Math.round((offer.expiresAt - Date.now()) / 1000))}s
+                </span>
+              )}
+            </p>
+            {offer.fromId !== youId && (
+              <button
+                onClick={rematch}
+                disabled={busy}
+                className="press"
+                style={{ ...btn(true), flex: "0 0 auto", padding: "8px 14px", fontSize: 13 }}
+              >
+                Accept
+              </button>
+            )}
+          </div>
+        )}
+
         {theirOffer && live && (
           <div
             style={{
@@ -876,13 +992,29 @@ export function LiveGameBoard({
 
           {!live && youAre && <ActionButton icon="swords" label="Rematch" onClick={rematch} />}
 
-          {/* Browsing the game is what this bar is for. Resign and draw
-              live in the header menu — they must not sit at the same
-              weight as the game itself. */}
-          <ActionButton icon="skipBack" label="Start" disabled={atPly === 0} onClick={first} />
+          {/* Browsing is what this bar is for. Resign, draw and abort
+              live in the header menu — they are rare and must not
+              compete with the board. Start and End live in the Moves
+              sheet, where you are already looking at the whole game. */}
           <ActionButton icon="chevronLeft" label="Prev" disabled={atPly === 0} onClick={() => stepTo(atPly - 1)} />
           <ActionButton icon="chevronRight" label="Next" disabled={atPly >= sans.length} onClick={() => stepTo(atPly + 1)} />
-          <ActionButton icon="skipForward" label="Live" disabled={atPly >= sans.length} onClick={last} />
+
+          {reviewing && (
+            <button
+              onClick={last}
+              className="press"
+              style={{
+                alignSelf: "center", marginLeft: "var(--s2)", marginRight: "var(--s2)",
+                minHeight: 34, padding: "0 14px", borderRadius: "var(--r-full)",
+                border: "none", background: "var(--gold)", color: "var(--gold-ink)",
+                fontSize: 12, fontWeight: 700, letterSpacing: "0.06em", cursor: "pointer",
+                display: "inline-flex", alignItems: "center", gap: 6,
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--gold-ink)" }} />
+              LIVE
+            </button>
+          )}
         </div>
       </div>
 
@@ -914,7 +1046,25 @@ export function LiveGameBoard({
       </div>
 
       <Sheet open={sheet === "moves"} onClose={() => setSheet(null)} title="Moves">
-        {sans.length === 0 ? <div style={{ height: 24 }} /> : MoveList}
+        {sans.length === 0 ? (
+          <div style={{ height: 24 }} />
+        ) : (
+          <>
+            {MoveList}
+            <div style={{ display: "flex", gap: "var(--s3)", marginTop: "var(--s4)", paddingBottom: "var(--s4)" }}>
+              <button onClick={first} disabled={atPly === 0} className="press" style={{ ...btn(false), minHeight: 44 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                  <Icon name="skipBack" size={16} /> Start
+                </span>
+              </button>
+              <button onClick={last} disabled={atPly >= sans.length} className="press" style={{ ...btn(false), minHeight: 44 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                  Latest <Icon name="skipForward" size={16} />
+                </span>
+              </button>
+            </div>
+          </>
+        )}
       </Sheet>
 
       <Sheet open={sheet === "chat"} onClose={() => setSheet(null)} title="Chat">
@@ -939,6 +1089,45 @@ export function LiveGameBoard({
           <SettingRow label="Coordinates" on={coordsOn} onToggle={() => setCoordsOn((v) => !v)} />
 
           <div>
+            <p className="section-label" style={{ marginBottom: "var(--s2)" }}>Clock size</p>
+            <div
+              role="radiogroup"
+              aria-label="Clock size"
+              style={{
+                display: "flex", gap: 2, padding: 3,
+                background: "var(--surface-2)", border: "1px solid var(--border)",
+                borderRadius: "var(--r-full)",
+              }}
+            >
+              {[
+                { v: 1, label: "Standard" },
+                { v: 1.25, label: "Large" },
+                { v: 1.5, label: "Extra large" },
+              ].map((o) => {
+                const on = clockScale === o.v;
+                return (
+                  <button
+                    key={o.v}
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => chooseClock(o.v)}
+                    className="press"
+                    style={{
+                      flex: 1, borderRadius: "var(--r-full)", border: "none",
+                      padding: "7px 4px", fontSize: "var(--t-caption)", fontWeight: 600,
+                      cursor: "pointer",
+                      background: on ? "var(--gold)" : "transparent",
+                      color: on ? "var(--gold-ink)" : "var(--text-muted)",
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
             <p className="section-label" style={{ marginBottom: "var(--s2)" }}>Piece speed</p>
             <div
               role="radiogroup"
@@ -952,8 +1141,7 @@ export function LiveGameBoard({
               {[
                 { ms: 0, label: "Instant" },
                 { ms: 90, label: "Fast" },
-                { ms: 130, label: "Normal" },
-                { ms: 220, label: "Slow" },
+                { ms: 150, label: "Normal" },
               ].map((o) => {
                 const on = animMs === o.ms;
                 return (
@@ -1068,6 +1256,7 @@ export function LiveGameBoard({
         moves={Math.ceil(sans.length / 2)}
         seconds={Number.isFinite(seconds) ? seconds : null}
         ledPercent={ledPercent}
+        swing={swing && { move: Math.ceil(swing.ply / 2), material: Math.abs(swing.delta) }}
         gameId={gameId}
         onRevealRail={youAre ? () => { setResultDismissed(true); setReveal((n) => n + 1); } : undefined}
         railCount={railCount}

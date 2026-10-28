@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ChallengeActions } from "@/components/ChallengeActions";
 import { PlayPanel } from "@/components/challenge/PlayPanel";
 import { PlayerIdentity } from "@/components/ui/PlayerIdentity";
+import { Avatar } from "@/components/ui/Avatar";
 import { Icon, SPEED_ICON } from "@/components/ui/Icon";
 import { displayRating } from "@/lib/services/ratings";
 import { CATEGORY_ORDER, CATEGORY_LABEL, parseId, label, classify } from "@engine/game/timeControls";
@@ -162,16 +163,71 @@ export default async function ChallengesPage() {
   ]);
   const watching = new Map(watchCounts.map((w) => [w.liveGameId, w._count._all]));
 
+  // Presence, and how close each open seek is to your own strength.
+  // "1540, 60 below you" is a decision; a bare number is homework.
+  const [onlineNow, seekRatings] = await Promise.all([
+    prisma.profile.findMany({
+      where: {
+        userId: { in: memberIds.filter((id) => id !== userId) },
+        lastSeenAt: { gte: new Date(Date.now() - 3 * 60 * 1000) },
+      },
+      select: { userId: true, fullName: true, handle: true, country: true },
+      take: 14,
+    }),
+    prisma.glyphRating.findMany({
+      where: { userId: { in: openSeeks.map((c) => c.fromId) } },
+    }),
+  ]);
+
+  const seekRatingOf = (uid: string, category: string) =>
+    seekRatings.find((r) => r.userId === uid && r.category === category) ?? null;
+
   const byCategory = Object.fromEntries(ratings.map((r) => [r.category, r]));
   const yourMove = activeGames.filter(
     (g) => sideToMove(g.fen) === (g.whiteId === userId ? "w" : "b"),
   ).length;
 
   return (
-    <div style={{ paddingTop: "var(--s6)", display: "flex", flexDirection: "column", gap: "var(--s6)" }}>
+    <div style={{ paddingTop: "var(--s5)", display: "flex", flexDirection: "column", gap: "var(--s5)" }}>
       <h1 className="font-display t-display">Games</h1>
 
-      {/* 1 — Is someone waiting on me? */}
+      {/* Who is around. Club apps are returned to for people, not for
+          features, so presence goes above everything else. */}
+      {onlineNow.length > 0 && (
+        <section style={{ marginTop: "calc(-1 * var(--s3))" }}>
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: "var(--s3)",
+              padding: "var(--s2) var(--s3)",
+              background: "var(--surface)", border: "1px solid var(--border)",
+              borderRadius: "var(--r-full)",
+            }}
+          >
+            <span style={{ display: "flex", flexShrink: 0 }}>
+              {onlineNow.slice(0, 6).map((m, i) => (
+                <Link
+                  key={m.userId}
+                  href={`/profile/${m.handle}`}
+                  title={m.fullName ?? m.handle}
+                  style={{ marginLeft: i === 0 ? 0 : -9, display: "block" }}
+                >
+                  <Avatar name={m.fullName ?? m.handle ?? "Member"} size={26} />
+                </Link>
+              ))}
+            </span>
+            <span className="t-caption digits" style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+              {onlineNow.length} online now
+            </span>
+            <span style={{ flex: 1 }} />
+            <span
+              aria-hidden="true"
+              style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--success)", flexShrink: 0 }}
+            />
+          </div>
+        </section>
+      )}
+
+      {/* Anything waiting on you comes before anything you might start. */}
       {incoming.length > 0 && (
         <section>
           <SectionHeader count={incoming.length}>Action required</SectionHeader>
@@ -222,7 +278,13 @@ export default async function ChallengesPage() {
         </section>
       )}
 
-      {/* 2 — Do I have a game going? */}
+      {/* The primary action, always reachable without scrolling. */}
+      <section>
+        <SectionHeader>Play</SectionHeader>
+        <PlayPanel />
+      </section>
+
+      {/* Your own boards, your move first. */}
       {activeGames.length > 0 && (
         <section>
           <SectionHeader count={yourMove}>Your games</SectionHeader>
@@ -285,13 +347,7 @@ export default async function ChallengesPage() {
         </section>
       )}
 
-      {/* 3 — I want to play right now. */}
-      <section>
-        <SectionHeader>Play</SectionHeader>
-        <PlayPanel />
-      </section>
-
-      {/* 3b — Somebody else's game, which you may walk over and watch. */}
+      {/* Somebody else's game, which you may walk over and watch. */}
       {clubGames.length > 0 && (
         <section>
           <SectionHeader count={clubGames.length}>Being played now</SectionHeader>
@@ -333,7 +389,7 @@ export default async function ChallengesPage() {
         </section>
       )}
 
-      {/* 4 — The club board: games going spare, right now. */}
+      {/* The club board: games going spare, right now. */}
       {openSeeks.length > 0 && (
         <section>
           <SectionHeader count={openSeeks.length}>Open in your club</SectionHeader>
@@ -366,7 +422,22 @@ export default async function ChallengesPage() {
                             <span className="digits">{clock.text}</span>
                           </span>
                           <span>{c.rated ? "rated" : "casual"}</span>
-                          {c.clubId && clubName.get(c.clubId) && <span>{clubName.get(c.clubId)}</span>}
+                          {(() => {
+                            const theirs = seekRatingOf(c.fromId, clock.category);
+                            const mineRow = byCategory[clock.category];
+                            if (!theirs) return null;
+                            const gap = mineRow ? theirs.rating - mineRow.rating : null;
+                            return (
+                              <span className="digits">
+                                {Math.round(theirs.rating)}
+                                {gap !== null && Math.abs(gap) >= 15 && (
+                                  <span style={{ color: "var(--text-dim)" }}>
+                                    {" "}{Math.abs(Math.round(gap))} {gap > 0 ? "above" : "below"} you
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })()}
                           {mins !== null && <span className="digits">{mins}m left</span>}
                         </>
                       }
@@ -380,7 +451,7 @@ export default async function ChallengesPage() {
         </section>
       )}
 
-      {/* 5 — Sent, low emphasis. */}
+      {/* What you have sent out. Low emphasis — it is waiting on them. */}
       {outgoing.length > 0 && (
         <section>
           <SectionHeader>Sent</SectionHeader>
@@ -421,12 +492,31 @@ export default async function ChallengesPage() {
         </section>
       )}
 
-      {/* 6 — Ratings: profile information, so it sits last. */}
+      {/* Nothing at all going on: say so, and give one way out. */}
+      {incoming.length === 0 && activeGames.length === 0 && clubGames.length === 0 && openSeeks.length === 0 && (
+        <section
+          style={{
+            textAlign: "center", padding: "var(--s8) var(--s4)",
+            background: "var(--surface)", border: "1px solid var(--border)",
+            borderRadius: "var(--r-lg)",
+          }}
+        >
+          <span style={{ color: "var(--text-dim)", display: "inline-block", marginBottom: "var(--s2)" }}>
+            <Icon name="castle" size={30} />
+          </span>
+          <p style={{ fontWeight: 600 }}>The club is quiet.</p>
+          <p className="t-secondary" style={{ marginTop: 2 }}>
+            Post a seek and someone will take it.
+          </p>
+        </section>
+      )}
+
+      {/* Rating is profile data, not a play control, so it sits last. */}
       <section>
         <SectionHeader>Your rating</SectionHeader>
         <div
           className="card"
-          style={{ padding: "var(--s3) var(--s2)", display: "grid", gridTemplateColumns: "repeat(4, 1fr)" }}
+          style={{ padding: "var(--s2) var(--s1)", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderRadius: "var(--r-md)" }}
         >
           {CATEGORY_ORDER.map((c, i) => {
             const row = byCategory[c];
@@ -438,7 +528,7 @@ export default async function ChallengesPage() {
                   borderLeft: i === 0 ? "none" : "1px solid var(--border)",
                 }}
               >
-                <p className="digits" style={{ fontSize: 19, fontWeight: 600, color: row ? "var(--text)" : "var(--text-dim)" }}>
+                <p className="digits" style={{ fontSize: 17, fontWeight: 600, color: row ? "var(--text)" : "var(--text-dim)" }}>
                   {displayRating(row)}
                 </p>
                 <p style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>

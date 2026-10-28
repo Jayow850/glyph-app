@@ -114,13 +114,22 @@ function Side({
   );
 }
 
-function summary(moves: number, seconds: number | null, led: number | null) {
+function summary(
+  moves: number,
+  seconds: number | null,
+  led: number | null,
+  swing: { move: number; material: number } | null,
+) {
   const parts = [`${moves} ${moves === 1 ? "move" : "moves"}`];
   if (seconds !== null && seconds > 0) {
     const m = Math.floor(seconds / 60);
     parts.push(m >= 1 ? `${m} min ${seconds % 60} s` : `${seconds} s`);
   }
   if (led !== null && led > 0) parts.push(`ahead for ${led}% of it`);
+  // Material, and said as material. GLYPH ships no engine, and a
+  // "biggest swing" that quietly meant something else would be a lie
+  // told by a label.
+  if (swing && swing.material >= 2) parts.push(`biggest material swing on move ${swing.move}`);
   return parts.join(" · ");
 }
 
@@ -154,6 +163,7 @@ export function GameOverSheet({
   moves,
   seconds,
   ledPercent,
+  swing = null,
   gameId,
   onRevealRail,
   railCount = 0,
@@ -184,6 +194,7 @@ export function GameOverSheet({
   seconds: number | null;
   /** Share of the game you led on material, or null for a spectator. */
   ledPercent: number | null;
+  swing?: { move: number; material: number } | null;
   gameId: string;
   /** Opens the whisper thread. Absent for a spectator. */
   onRevealRail?: () => void;
@@ -198,11 +209,21 @@ export function GameOverSheet({
   const won = youAre !== null && !drew && ((youAre === "w" && result === "1-0") || (youAre === "b" && result === "0-1"));
   const aborted = endReason === "aborted";
 
+  const winner = result === "1-0" ? whiteName : result === "0-1" ? blackName : null;
+
+  // A player thinks in outcomes, not colours. "White won" is how a
+  // database describes a game; "You lost" is how a person remembers it.
   const headline =
     aborted ? "Aborted"
-    : youAre === null ? (drew ? "Draw" : result === "1-0" ? "White won" : "Black won")
     : drew ? "Draw"
+    : youAre === null ? `${winner ?? "Nobody"} won`
     : won ? "You won" : "You lost";
+
+  const reason = endReason ? REASON_TEXT[endReason] ?? endReason : "game over";
+  const subline =
+    aborted ? "aborted before it began"
+    : youAre !== null && winner ? `${winner} won ${reason}`
+    : reason;
 
   const button = (primary: boolean) => ({
     flex: 1, minHeight: 48, borderRadius: "var(--r-md)",
@@ -219,17 +240,13 @@ export function GameOverSheet({
   const blackWon = result === "0-1";
 
   return (
-    <Sheet open={open} onClose={onClose} title="">
-      <div style={{ marginTop: "calc(-1 * var(--s4))", marginBottom: "var(--s4)" }}>
-        <h2 className="font-display" style={{ fontSize: "var(--t-display)", lineHeight: 1.1, letterSpacing: "-0.02em" }}>
-          {headline}
-        </h2>
-        <p className="t-secondary" style={{ marginTop: 2 }}>
-          {endReason ? REASON_TEXT[endReason] ?? endReason : "game over"}
-          {!rated && !aborted && " · casual"}
-        </p>
-      </div>
-
+    <Sheet
+      open={open}
+      onClose={onClose}
+      large
+      title={headline}
+      subtitle={`${subline}${!rated && !aborted ? " · casual" : ""}`}
+    >
       <div
         style={{
           background: "var(--surface-2)",
@@ -252,7 +269,7 @@ export function GameOverSheet({
 
       {moves > 0 && (
         <p className="t-caption digits" style={{ color: "var(--text-muted)", marginBottom: "var(--s4)" }}>
-          {summary(moves, seconds, ledPercent)}
+          {summary(moves, seconds, ledPercent, swing)}
         </p>
       )}
 

@@ -163,11 +163,12 @@ export function PlayPanel() {
   return (
     <section className="card" style={{ padding: "var(--s4)", display: "flex", flexDirection: "column", gap: "var(--s4)" }}>
       {/* Time control — the only real decision, so it leads. */}
+      <div style={{ position: "relative", marginLeft: "calc(-1 * var(--s4))", marginRight: "calc(-1 * var(--s4))" }}>
       <div
+        className="chip-row"
         style={{
           display: "flex", gap: "var(--s2)", overflowX: "auto",
-          marginLeft: "calc(-1 * var(--s4))", marginRight: "calc(-1 * var(--s4))",
-          paddingLeft: "var(--s4)", paddingRight: "var(--s4)", paddingBottom: 2,
+          paddingLeft: "var(--s4)", paddingRight: "var(--s6)", paddingBottom: 2,
           scrollbarWidth: "none",
         }}
       >
@@ -177,6 +178,15 @@ export function PlayPanel() {
             <span className="digits">{p.label}</span>
           </Chip>
         ))}
+      </div>
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute", right: 0, top: 0, bottom: 2, width: 28,
+          pointerEvents: "none",
+          background: "linear-gradient(to right, transparent, var(--surface))",
+        }}
+      />
       </div>
 
       {/* Two segmented controls rather than five loose chips: at 360px
@@ -201,21 +211,21 @@ export function PlayPanel() {
         />
       </div>
 
-      <div style={{ display: "flex", gap: "var(--s3)" }}>
-        <button onClick={quickPlay} disabled={busy} className="press" style={action(true)}>
-          <Icon name="zap" size={18} />
-          {busy ? "Finding…" : "Quick play"}
+      <button onClick={quickPlay} disabled={busy} className="press" style={{ ...action(true), minHeight: 52, width: "100%" }}>
+        <Icon name="zap" size={19} />
+        {busy ? "Finding…" : "Quick play"}
+      </button>
+
+      <div style={{ display: "flex", gap: "var(--s3)", marginTop: "calc(-1 * var(--s2))" }}>
+        <button onClick={() => setSheet(true)} disabled={busy} className="press" style={{ ...action(false), minHeight: 44 }}>
+          <Icon name="users" size={17} />
+          Choose opponent
         </button>
-        <button onClick={() => setSheet(true)} disabled={busy} className="press" style={action(false)}>
-          <Icon name="users" size={18} />
-          Choose
+        <button onClick={postSeek} disabled={busy} className="press" style={{ ...action(false), minHeight: 44, background: "transparent" }}>
+          <Icon name="inbox" size={17} />
+          Post seek
         </button>
       </div>
-
-      <button onClick={postSeek} disabled={busy} className="press" style={{ ...action(false), minHeight: 44 }}>
-        <Icon name="inbox" size={18} />
-        Post to club board
-      </button>
 
       <div>
         <button

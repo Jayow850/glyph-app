@@ -422,3 +422,26 @@ export function sharePlayerLed(sans: string[], side: "w" | "b"): number {
   const led = timeline.filter((edge) => (side === "w" ? edge > 0 : edge < 0)).length;
   return Math.round((led / timeline.length) * 100);
 }
+
+/**
+ * The single move that changed the material balance most, if any did.
+ *
+ * Not an engine evaluation — GLYPH does not ship one, and a "biggest
+ * swing" that silently meant "biggest material change" while looking
+ * like an engine verdict would be a lie told by a label. This is
+ * material, and the caller words it as material.
+ */
+export function biggestSwing(sans: string[]): { ply: number; delta: number } | null {
+  const timeline = materialTimeline(sans);
+  let best: { ply: number; delta: number } | null = null;
+  let previous = 0;
+
+  timeline.forEach((edge, i) => {
+    const delta = edge - previous;
+    previous = edge;
+    if (delta !== 0 && (best === null || Math.abs(delta) > Math.abs(best.delta))) {
+      best = { ply: i + 1, delta };
+    }
+  });
+  return best;
+}
