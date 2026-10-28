@@ -5,6 +5,8 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { ChallengeWatcher } from "@/components/ChallengeWatcher";
 import { BottomNav, SideRail } from "@/components/nav/Nav";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { THEME_SCRIPT } from "@/lib/theme";
 
 /**
  * Fonts are self-hosted, not fetched from Google.
@@ -52,7 +54,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0D0D0F",
+  // Two values so the browser chrome matches before any script runs;
+  // an explicit choice updates this tag at runtime.
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FAF8F4" },
+    { media: "(prefers-color-scheme: dark)", color: "#0D0D0F" },
+  ],
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -64,6 +71,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   return (
     <html lang="en" className={`${display.variable} ${body.variable} dark`} suppressHydrationWarning>
+      <head>
+        {/* Decides the theme before the first paint — see lib/theme.ts. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>
         <header
           className="appbar"
@@ -82,6 +93,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <Link href="/feed" className="font-display press" style={{ fontSize: 22, letterSpacing: "-0.01em" }}>
               GLYPH<span style={{ color: "var(--gold)" }}>.</span>
             </Link>
+            <div style={{ display: "flex", alignItems: "center", gap: "var(--s1)" }}>
+            <ThemeToggle compact />
             <Link
               href="/messages"
               aria-label="Messages"
@@ -93,6 +106,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <path d="m3.8 7 7.1 5.2a2 2 0 0 0 2.2 0L20.2 7" />
               </svg>
             </Link>
+            </div>
           </div>
         </header>
 

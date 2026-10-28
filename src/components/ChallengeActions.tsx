@@ -46,9 +46,9 @@ export function ChallengeActions({
   }
 
   const ghost = {
-    background: "#1C1C21",
+    background: "var(--surface-2)",
     border: "1px solid rgba(255,255,255,0.08)",
-    color: "#8A8A93",
+    color: "var(--text-muted)",
     borderRadius: 10,
     padding: "8px 14px",
     fontSize: 14,
@@ -68,7 +68,7 @@ export function ChallengeActions({
         onClick={accept}
         disabled={busy}
         style={{
-          background: "#D4AF37", color: "#0D0D0F", border: "none",
+          background: "var(--gold)", color: "var(--gold-ink)", border: "none",
           borderRadius: 10, padding: "8px 16px", fontSize: 14, fontWeight: 600,
           cursor: "pointer", opacity: busy ? 0.5 : 1,
         }}

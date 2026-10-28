@@ -120,14 +120,14 @@ export function GameChat({
                 <div
                   style={{
                     maxWidth: "82%",
-                    background: mine ? "rgba(212,175,55,0.16)" : "#1C1C21",
+                    background: mine ? "rgba(212,175,55,0.16)" : "var(--surface-2)",
                     border: `1px solid ${mine ? "rgba(212,175,55,0.22)" : "rgba(255,255,255,0.06)"}`,
                     borderRadius: 12,
                     padding: "7px 11px",
                   }}
                 >
                   {!mine && (
-                    <p style={{ fontSize: 11, color: "#8A8A93", marginBottom: 2 }}>{m.name}</p>
+                    <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 2 }}>{m.name}</p>
                   )}
                   <p style={{ fontSize: 14, lineHeight: 1.4, wordBreak: "break-word" }}>{m.body}</p>
                 </div>
@@ -146,8 +146,8 @@ export function GameChat({
                 onClick={() => send(q, "QUICK")}
                 disabled={sending}
                 style={{
-                  background: "#1C1C21", border: "1px solid rgba(255,255,255,0.08)",
-                  color: "#B5B5BE", borderRadius: 999, padding: "5px 11px",
+                  background: "var(--surface-2)", border: "1px solid rgba(255,255,255,0.08)",
+                  color: "var(--text-muted)", borderRadius: 999, padding: "5px 11px",
                   fontSize: 13, cursor: "pointer",
                 }}
               >
@@ -161,7 +161,7 @@ export function GameChat({
                 disabled={sending}
                 aria-label={`Send ${r}`}
                 style={{
-                  background: "#1C1C21", border: "1px solid rgba(255,255,255,0.08)",
+                  background: "var(--surface-2)", border: "1px solid rgba(255,255,255,0.08)",
                   borderRadius: 999, width: 30, height: 30, fontSize: 15,
                   cursor: "pointer", lineHeight: 1,
                 }}
@@ -181,7 +181,7 @@ export function GameChat({
               maxLength={300}
               placeholder="Message your opponent"
               style={{
-                flex: 1, minWidth: 0, background: "#1C1C21", color: "#F5F1E8",
+                flex: 1, minWidth: 0, background: "var(--surface-2)", color: "var(--text)",
                 border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10,
                 padding: "9px 12px", fontSize: 14, outline: "none",
               }}
@@ -190,7 +190,7 @@ export function GameChat({
               type="submit"
               disabled={sending || !draft.trim()}
               style={{
-                background: "#D4AF37", color: "#0D0D0F", border: "none",
+                background: "var(--gold)", color: "var(--gold-ink)", border: "none",
                 borderRadius: 10, padding: "0 16px", fontWeight: 600, fontSize: 14,
                 cursor: "pointer", opacity: sending || !draft.trim() ? 0.4 : 1,
               }}

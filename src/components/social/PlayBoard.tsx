@@ -117,9 +117,11 @@ export function PlayBoard({
               width: "100%",
               borderRadius: 14,
               padding: 6,
-              background: "linear-gradient(160deg, #26262C 0%, #17171B 100%)",
-              boxShadow: "0 22px 60px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.05)",
-              border: "1px solid rgba(212,175,55,0.14)",
+              // The frame is chrome, so it follows the theme. The squares
+              // inside it do not — a board is an object, not a surface.
+              background: "var(--surface-2)",
+              boxShadow: "0 18px 50px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)",
+              border: "1px solid var(--border-gold)",
               boxSizing: "border-box",
             }
       }

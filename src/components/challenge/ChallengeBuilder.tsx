@@ -12,9 +12,9 @@ import {
   type SpeedCategory,
 } from "@engine/game/timeControls";
 
-const GOLD = "#D4AF37";
-const RAISED = "#16161A";
-const SUNK = "#101013";
+const GOLD = "var(--gold)";
+const RAISED = "var(--surface)";
+const SUNK = "var(--bg)";
 
 interface Player {
   id: string;
@@ -45,7 +45,7 @@ function Segment({
               flex: 1, border: "none", borderRadius: 8, padding: "8px 4px",
               fontSize: 14, fontWeight: 600, cursor: "pointer",
               background: on ? GOLD : "transparent",
-              color: on ? "#0D0D0F" : "#8A8A93",
+              color: on ? "var(--gold-ink)" : "var(--text-muted)",
               transition: "background 140ms, color 140ms",
             }}
           >
@@ -169,7 +169,7 @@ export function ChallengeBuilder({ defaultPresetId = "600+0" }: { defaultPresetI
               style={{
                 flex: 1, border: `1px solid ${on ? "rgba(212,175,55,0.45)" : "rgba(255,255,255,0.07)"}`,
                 background: on ? "rgba(212,175,55,0.14)" : SUNK,
-                color: on ? GOLD : "#8A8A93",
+                color: on ? GOLD : "var(--text-muted)",
                 borderRadius: 10, padding: "9px 2px", cursor: "pointer",
                 display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
               }}
@@ -193,7 +193,7 @@ export function ChallengeBuilder({ defaultPresetId = "600+0" }: { defaultPresetI
               style={{
                 border: `1px solid ${on ? GOLD : "rgba(255,255,255,0.08)"}`,
                 background: on ? "rgba(212,175,55,0.16)" : RAISED,
-                color: on ? "#F5F1E8" : "#B5B5BE",
+                color: on ? "var(--text)" : "var(--text-muted)",
                 borderRadius: 12, padding: "16px 4px",
                 fontSize: 17, fontWeight: 600, cursor: "pointer",
                 transition: "border-color 140ms, background 140ms",
@@ -248,7 +248,7 @@ export function ChallengeBuilder({ defaultPresetId = "600+0" }: { defaultPresetI
             </div>
             <button
               onClick={() => { setOpponent(null); setQuery(""); }}
-              style={{ background: "none", border: "none", color: "#8A8A93", cursor: "pointer", fontSize: 13 }}
+              style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 13 }}
             >
               Change
             </button>
@@ -260,7 +260,7 @@ export function ChallengeBuilder({ defaultPresetId = "600+0" }: { defaultPresetI
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search by name or @handle"
               style={{
-                width: "100%", boxSizing: "border-box", background: SUNK, color: "#F5F1E8",
+                width: "100%", boxSizing: "border-box", background: SUNK, color: "var(--text)",
                 border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10,
                 padding: "11px 12px", fontSize: 15, outline: "none",
               }}
@@ -292,14 +292,14 @@ export function ChallengeBuilder({ defaultPresetId = "600+0" }: { defaultPresetI
                     aria-hidden="true"
                     style={{
                       width: 30, height: 30, borderRadius: 9, flexShrink: 0,
-                      display: "grid", placeItems: "center", background: "#2A2A30",
-                      color: "#B5B5BE", fontSize: 12, fontWeight: 600,
+                      display: "grid", placeItems: "center", background: "var(--border)",
+                      color: "var(--text-muted)", fontSize: 12, fontWeight: 600,
                     }}
                   >
                     {p.fullName.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: 15, color: "#F5F1E8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <p style={{ fontSize: 15, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {p.fullName}
                     </p>
                     <p className="text-ivory-meta" style={{ fontSize: 12 }}>
@@ -321,14 +321,14 @@ export function ChallengeBuilder({ defaultPresetId = "600+0" }: { defaultPresetI
           maxLength={140}
           placeholder="Add a note (optional)"
           style={{
-            width: "100%", boxSizing: "border-box", background: SUNK, color: "#F5F1E8",
+            width: "100%", boxSizing: "border-box", background: SUNK, color: "var(--text)",
             border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10,
             padding: "10px 12px", fontSize: 14, outline: "none",
           }}
         />
       )}
 
-      {error && <p style={{ fontSize: 14, color: "#B0575A" }}>{error}</p>}
+      {error && <p style={{ fontSize: 14, color: "var(--danger)" }}>{error}</p>}
       {sent && <p style={{ fontSize: 14, color: GOLD }}>Challenge sent to {sent}.</p>}
 
       <button
@@ -337,8 +337,8 @@ export function ChallengeBuilder({ defaultPresetId = "600+0" }: { defaultPresetI
         style={{
           border: "none", borderRadius: 12, padding: "13px 0",
           fontSize: 15, fontWeight: 600,
-          background: opponent ? GOLD : "#1C1C21",
-          color: opponent ? "#0D0D0F" : "#6E6E78",
+          background: opponent ? GOLD : "var(--surface-2)",
+          color: opponent ? "var(--gold-ink)" : "var(--text-dim)",
           cursor: opponent && !sending ? "pointer" : "default",
           opacity: sending ? 0.5 : 1,
         }}

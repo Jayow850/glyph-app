@@ -62,8 +62,8 @@ export function ArbiterControls({
     fontSize: 15,
     cursor: busy ? "default" : "pointer",
     border: primary ? "none" : "1px solid rgba(212,175,55,0.25)",
-    background: primary ? "#D4AF37" : "transparent",
-    color: primary ? "#0D0D0F" : "#8A8A93",
+    background: primary ? "var(--gold)" : "transparent",
+    color: primary ? "var(--gold-ink)" : "var(--text-muted)",
     opacity: busy ? 0.5 : 1,
   });
 
@@ -72,7 +72,7 @@ export function ArbiterControls({
       <p className="section-label">Arbiter</p>
 
       {blocked && (
-        <p style={{ fontSize: 14, color: "#B0575A" }}>
+        <p style={{ fontSize: 14, color: "var(--danger)" }}>
           Round {currentRound} has {pendingResults} unconfirmed {pendingResults === 1 ? "result" : "results"}.
           Pairing opens once every board is in.
         </p>
@@ -105,7 +105,7 @@ export function ArbiterControls({
         </a>
       </div>
 
-      {error && <p style={{ fontSize: 13, color: "#B0575A" }}>{error}</p>}
+      {error && <p style={{ fontSize: 13, color: "var(--danger)" }}>{error}</p>}
     </div>
   );
 }

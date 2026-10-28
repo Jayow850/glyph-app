@@ -4,13 +4,13 @@ import { prisma } from "@/lib/prisma";
 export const metadata = { title: "Tournaments" };
 
 const STATUS_STYLE: Record<string, { label: string; color: string; bg: string }> = {
-  DRAFT:       { label: "Draft",        color: "#8A8A93", bg: "rgba(138,138,147,0.12)" },
-  REGISTRATION:{ label: "Entry open",   color: "#D4AF37", bg: "rgba(212,175,55,0.14)" },
-  CHECK_IN:    { label: "Check-in",     color: "#D4AF37", bg: "rgba(212,175,55,0.14)" },
-  IN_PROGRESS: { label: "Live",         color: "#7FB069", bg: "rgba(127,176,105,0.14)" },
-  PAUSED:      { label: "Paused",       color: "#9BA4B0", bg: "rgba(155,164,176,0.14)" },
-  COMPLETED:   { label: "Complete",     color: "#8A8A93", bg: "rgba(138,138,147,0.12)" },
-  CANCELLED:   { label: "Cancelled",    color: "#B0575A", bg: "rgba(176,87,90,0.14)" },
+  DRAFT:       { label: "Draft",        color: "var(--text-muted)", bg: "rgba(138,138,147,0.12)" },
+  REGISTRATION:{ label: "Entry open",   color: "var(--gold)", bg: "rgba(212,175,55,0.14)" },
+  CHECK_IN:    { label: "Check-in",     color: "var(--gold)", bg: "rgba(212,175,55,0.14)" },
+  IN_PROGRESS: { label: "Live",         color: "var(--success)", bg: "rgba(127,176,105,0.14)" },
+  PAUSED:      { label: "Paused",       color: "var(--draw)", bg: "rgba(155,164,176,0.14)" },
+  COMPLETED:   { label: "Complete",     color: "var(--text-muted)", bg: "rgba(138,138,147,0.12)" },
+  CANCELLED:   { label: "Cancelled",    color: "var(--danger)", bg: "rgba(176,87,90,0.14)" },
 };
 
 function StatusChip({ status }: { status: string }) {
@@ -65,7 +65,7 @@ export default async function TournamentsPage() {
 
                 <p className="text-ivory-meta" style={{ fontSize: 14 }}>{t.club.name}</p>
 
-                <div className="digits" style={{ display: "flex", gap: 14, fontSize: 13, color: "#8A8A93", flexWrap: "wrap" }}>
+                <div className="digits" style={{ display: "flex", gap: 14, fontSize: 13, color: "var(--text-muted)", flexWrap: "wrap" }}>
                   <span>{t.format.replace("_", " ").toLowerCase()}</span>
                   <span>{t.timeControlDetail ?? t.timeControl.toLowerCase()}</span>
                   <span>round {t.currentRound}/{t.totalRounds}</span>

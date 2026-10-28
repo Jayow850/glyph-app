@@ -57,7 +57,7 @@ export async function ProfileView({
             aria-hidden="true"
             style={{
               width: 72, height: 72, borderRadius: 20, display: "grid", placeItems: "center",
-              background: tintFor(name), color: "#F5F1E8", fontSize: 26, fontWeight: 600, flexShrink: 0,
+              background: tintFor(name), color: "var(--text)", fontSize: 26, fontWeight: 600, flexShrink: 0,
             }}
           >
             {initials(name)}
@@ -91,8 +91,8 @@ export async function ProfileView({
             href="/challenges"
             style={{
               display: "block", textAlign: "center", textDecoration: "none",
-              background: "#1C1C21", border: "1px solid rgba(212,175,55,0.22)",
-              color: "#D4AF37", borderRadius: 12, padding: "11px 0",
+              background: "var(--surface-2)", border: "1px solid rgba(212,175,55,0.22)",
+              color: "var(--gold)", borderRadius: 12, padding: "11px 0",
               fontSize: 15, fontWeight: 600,
             }}
           >
@@ -114,8 +114,8 @@ export async function ProfileView({
                   borderLeft: i === 0 ? "none" : "1px solid rgba(255,255,255,0.05)",
                 }}
               >
-                <p style={{ fontSize: 14, color: "#8A8A93", lineHeight: 1.2 }}>{CATEGORY_ICON[c]}</p>
-                <p className="digits" style={{ fontSize: 21, fontWeight: 600, color: row ? "#F5F1E8" : "#53535C" }}>
+                <p style={{ fontSize: 14, color: "var(--text-muted)", lineHeight: 1.2 }}>{CATEGORY_ICON[c]}</p>
+                <p className="digits" style={{ fontSize: 21, fontWeight: 600, color: row ? "var(--text)" : "#53535C" }}>
                   {displayRating(row)}
                 </p>
                 <p className="section-label">{CATEGORY_LABEL[c]}</p>

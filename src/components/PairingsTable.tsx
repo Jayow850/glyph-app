@@ -23,8 +23,8 @@ const RESULT_LABEL: Record<string, string> = {
 };
 
 const RESULT_COLOR: Record<string, string> = {
-  WHITE_WIN: "#F5F1E8", BLACK_WIN: "#F5F1E8", DRAW: "#9BA4B0",
-  PENDING: "#8A8A93", BYE_FULL: "#8A8A93", BYE_HALF: "#8A8A93",
+  WHITE_WIN: "var(--text)", BLACK_WIN: "var(--text)", DRAW: "var(--draw)",
+  PENDING: "var(--text-muted)", BYE_FULL: "var(--text-muted)", BYE_HALF: "var(--text-muted)",
 };
 
 export function PairingsTable({ rows, roundNumber }: { rows: PairingRow[]; roundNumber: number }) {
@@ -58,7 +58,7 @@ export function PairingsTable({ rows, roundNumber }: { rows: PairingRow[]; round
               <span
                 className="digits"
                 style={{
-                  fontSize: 12, fontWeight: 600, color: "#D4AF37",
+                  fontSize: 12, fontWeight: 600, color: "var(--gold)",
                   background: "rgba(212,175,55,0.12)", borderRadius: 6,
                   padding: "4px 8px", flexShrink: 0, minWidth: 34, textAlign: "center",
                 }}
@@ -84,8 +84,8 @@ export function PairingsTable({ rows, roundNumber }: { rows: PairingRow[]; round
                   style={{
                     flexShrink: 0, textDecoration: "none", borderRadius: 10,
                     padding: "8px 16px", fontSize: 14, fontWeight: 600,
-                    background: r.yours ? "#D4AF37" : "transparent",
-                    color: r.yours ? "#0D0D0F" : "#8A8A93",
+                    background: r.yours ? "var(--gold)" : "transparent",
+                    color: r.yours ? "var(--gold-ink)" : "var(--text-muted)",
                     border: r.yours ? "none" : "1px solid rgba(255,255,255,0.1)",
                   }}
                 >
@@ -96,7 +96,7 @@ export function PairingsTable({ rows, roundNumber }: { rows: PairingRow[]; round
               ) : (
                 <span
                   className="digits"
-                  style={{ fontSize: 15, fontWeight: 600, color: RESULT_COLOR[r.result] ?? "#F5F1E8", flexShrink: 0 }}
+                  style={{ fontSize: 15, fontWeight: 600, color: RESULT_COLOR[r.result] ?? "var(--text)", flexShrink: 0 }}
                 >
                   {RESULT_LABEL[r.result] ?? r.result}
                 </span>

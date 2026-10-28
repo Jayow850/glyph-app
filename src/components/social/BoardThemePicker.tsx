@@ -50,7 +50,7 @@ export function BoardThemePicker() {
             overflow: "hidden",
             display: "grid",
             gridTemplateColumns: "1fr 1fr",
-            border: active === t.id ? "2px solid #D4AF37" : "1px solid rgba(255,255,255,0.14)",
+            border: active === t.id ? "2px solid var(--gold)" : "1px solid var(--border)",
           }}
         >
           <span style={{ background: t.light }} />

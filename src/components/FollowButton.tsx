@@ -52,8 +52,8 @@ export function FollowButton({
         fontWeight: 600,
         cursor: busy ? "default" : "pointer",
         opacity: busy ? 0.6 : 1,
-        background: following ? "transparent" : "#D4AF37",
-        color: following ? "#B5B5BE" : "#0D0D0F",
+        background: following ? "transparent" : "var(--gold)",
+        color: following ? "var(--text-muted)" : "var(--gold-ink)",
         border: following ? "1px solid rgba(255,255,255,0.14)" : "none",
         transition: "background 160ms, color 160ms",
       }}

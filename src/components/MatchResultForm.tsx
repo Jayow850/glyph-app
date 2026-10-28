@@ -47,7 +47,7 @@ export function MatchResultForm({ matchId }: { matchId: string }) {
           style={{
             background: "transparent",
             border: "1px solid rgba(212,175,55,0.25)",
-            color: "#D4AF37",
+            color: "var(--gold)",
             borderRadius: 8,
             padding: "5px 9px",
             fontSize: 13,
@@ -59,7 +59,7 @@ export function MatchResultForm({ matchId }: { matchId: string }) {
           {o.label}
         </button>
       ))}
-      {error && <span style={{ fontSize: 12, color: "#B0575A" }}>{error}</span>}
+      {error && <span style={{ fontSize: 12, color: "var(--danger)" }}>{error}</span>}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { BoardThemePicker } from "@/components/social/BoardThemePicker";
 import { GameChat } from "@/components/social/GameChat";
 import { Sheet } from "@/components/ui/Sheet";
 import { Icon, type IconName } from "@/components/ui/Icon";
+import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { PlayerIdentity } from "@/components/ui/PlayerIdentity";
 import { GameOverSheet } from "@/components/game/GameOverSheet";
 import { playForSan, playEnd, playMove, playLowTime, isMuted, setMuted } from "@/lib/sound";
@@ -742,6 +743,10 @@ export function LiveGameBoard({
           <div>
             <p className="section-label" style={{ marginBottom: "var(--s2)" }}>Board</p>
             <BoardThemePicker />
+          </div>
+          <div>
+            <p className="section-label" style={{ marginBottom: "var(--s2)" }}>Appearance</p>
+            <ThemeToggle />
           </div>
           <SettingRow
             label="Sound"

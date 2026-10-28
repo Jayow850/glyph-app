@@ -123,7 +123,7 @@ export function ChallengeWatcher() {
           key={c.id}
           className="cascade"
           style={{
-            background: "#16161A",
+            background: "var(--surface)",
             border: "1px solid rgba(212,175,55,0.3)",
             borderRadius: 14,
             padding: 14,
@@ -139,7 +139,7 @@ export function ChallengeWatcher() {
               {c.speed} · {c.clock} · {c.rated ? "rated" : "casual"}
             </p>
             {c.message && (
-              <p style={{ fontSize: 14, color: "#B5B5BE", marginTop: 5, fontStyle: "italic" }}>
+              <p style={{ fontSize: 14, color: "var(--text-muted)", marginTop: 5, fontStyle: "italic" }}>
                 “{c.message}”
               </p>
             )}
@@ -150,7 +150,7 @@ export function ChallengeWatcher() {
               onClick={() => accept(c.id)}
               disabled={busy === c.id}
               style={{
-                flex: 1, background: "#D4AF37", color: "#0D0D0F", border: "none",
+                flex: 1, background: "var(--gold)", color: "var(--gold-ink)", border: "none",
                 borderRadius: 10, padding: "9px 0", fontSize: 14, fontWeight: 600,
                 cursor: "pointer", opacity: busy === c.id ? 0.5 : 1,
               }}
@@ -161,7 +161,7 @@ export function ChallengeWatcher() {
               onClick={() => decline(c.id)}
               disabled={busy === c.id}
               style={{
-                flex: 1, background: "#1C1C21", color: "#8A8A93",
+                flex: 1, background: "var(--surface-2)", color: "var(--text-muted)",
                 border: "1px solid rgba(255,255,255,0.08)",
                 borderRadius: 10, padding: "9px 0", fontSize: 14,
                 cursor: "pointer", opacity: busy === c.id ? 0.5 : 1,

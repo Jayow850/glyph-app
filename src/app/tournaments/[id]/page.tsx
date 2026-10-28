@@ -84,7 +84,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
           <Link href="/tournaments" className="text-ivory-meta" style={{ fontSize: 13 }}>← All</Link>
         </div>
         <p className="text-ivory-meta" style={{ fontSize: 14 }}>{t.club.name}</p>
-        <p className="digits" style={{ fontSize: 13, color: "#8A8A93", marginTop: 4 }}>
+        <p className="digits" style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 4 }}>
           {t.format.replace("_", " ").toLowerCase()} · {t.timeControlDetail ?? t.timeControl.toLowerCase()} ·
           {" "}round {t.currentRound}/{t.totalRounds} · {t.status.replace("_", " ").toLowerCase()}
         </p>

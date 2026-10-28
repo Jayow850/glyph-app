@@ -8,7 +8,7 @@ export interface StandingRow {
 
 /** Gold for the podium, ivory for everyone still climbing. */
 function rankColor(rank: number) {
-  return rank <= 3 ? "#D4AF37" : "#8A8A93";
+  return rank <= 3 ? "var(--gold)" : "var(--text-muted)";
 }
 
 export function StandingsTable({ rows }: { rows: StandingRow[] }) {
