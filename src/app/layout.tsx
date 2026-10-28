@@ -90,7 +90,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             className="shell"
             style={{ height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}
           >
-            <Link href="/feed" className="font-display press" style={{ fontSize: 22, letterSpacing: "-0.01em" }}>
+            {/* The only Fraunces in the product. */}
+            <Link href="/feed" className="wordmark press" style={{ fontSize: 23 }}>
               GLYPH<span style={{ color: "var(--gold)" }}>.</span>
             </Link>
             <div style={{ display: "flex", alignItems: "center", gap: "var(--s1)" }}>

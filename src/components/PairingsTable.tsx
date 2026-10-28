@@ -36,7 +36,7 @@ export function PairingsTable({ rows, roundNumber }: { rows: PairingRow[]; round
           padding: "16px 20px", borderBottom: "1px solid rgba(212,175,55,0.08)",
         }}
       >
-        <h2 className="font-display" style={{ fontSize: 18 }}>Round {roundNumber}</h2>
+        <h2 className="font-display t-h2">Round {roundNumber}</h2>
         <span className="section-label">{rows.length} boards</span>
       </header>
 

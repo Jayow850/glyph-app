@@ -201,10 +201,11 @@ export function PlayPanel() {
         />
         <Segmented
           label="Colour"
+          compact
           options={[
-            { id: "random", label: "Random" },
-            { id: "white", label: "White" },
-            { id: "black", label: "Black" },
+            { id: "random", label: "Random", glyph: <Disc kind="random" /> },
+            { id: "white", label: "White", glyph: <Disc kind="white" /> },
+            { id: "black", label: "Black", glyph: <Disc kind="black" /> },
           ]}
           value={colour}
           onChange={(v) => setColour(v as typeof colour)}
@@ -273,12 +274,14 @@ export function PlayPanel() {
  * instead.
  */
 function Segmented({
-  label, options, value, onChange,
+  label, options, value, onChange, compact = false,
 }: {
   label: string;
-  options: { id: string; label: string }[];
+  options: { id: string; label: string; glyph?: React.ReactNode }[];
   value: string;
   onChange: (id: string) => void;
+  /** Draw the glyph alone. The label still reaches a screen reader. */
+  compact?: boolean;
 }) {
   return (
     <div
@@ -309,10 +312,42 @@ function Segmented({
               transition: "background 160ms var(--ease), color 160ms var(--ease)",
             }}
           >
-            {o.label}
+            {compact && o.glyph ? (
+              <span aria-label={o.label} title={o.label} style={{ display: "grid", placeItems: "center" }}>
+                {o.glyph}
+              </span>
+            ) : (
+              o.label
+            )}
           </button>
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Which colour you want, as the thing itself.
+ *
+ * Three words did not fit the track at 360px and "Random" became
+ * "Rand…", which is a control telling you it has run out of room. A
+ * white disc, a black disc and a split disc are unambiguous at any
+ * width and need no translation.
+ */
+function Disc({ kind }: { kind: "random" | "white" | "black" }) {
+  const base = {
+    width: 15, height: 15, borderRadius: "50%", display: "block",
+    border: "1px solid var(--border)", boxSizing: "border-box",
+  } as const;
+
+  if (kind === "white") return <span style={{ ...base, background: "#F7F4EC" }} />;
+  if (kind === "black") return <span style={{ ...base, background: "#242429" }} />;
+  return (
+    <span
+      style={{
+        ...base,
+        background: "linear-gradient(135deg, #F7F4EC 0 50%, #242429 50% 100%)",
+      }}
+    />
   );
 }

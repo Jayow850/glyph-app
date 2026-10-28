@@ -80,7 +80,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
     <div style={{ paddingTop: 24, display: "flex", flexDirection: "column", gap: 16 }}>
       <header>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-          <h1 className="font-display" style={{ fontSize: 26, flex: 1 }}>{t.name}</h1>
+          <h1 className="font-display t-display" style={{ flex: 1 }}>{t.name}</h1>
           <Link href="/tournaments" className="text-ivory-meta" style={{ fontSize: 13 }}>← All</Link>
         </div>
         <p className="text-ivory-meta" style={{ fontSize: 14 }}>{t.club.name}</p>
@@ -112,7 +112,7 @@ export default async function TournamentPage({ params }: { params: Promise<{ id:
       )}
 
       <div>
-        <h2 className="font-display" style={{ fontSize: 19, marginBottom: 8 }}>Standings</h2>
+        <h2 className="font-display t-h2" style={{ marginBottom: "var(--s2)" }}>Standings</h2>
         <StandingsTable rows={standingRows} />
       </div>
     </div>

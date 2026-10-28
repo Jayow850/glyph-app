@@ -64,7 +64,7 @@ export async function ProfileView({
           </span>
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p className="font-display" style={{ fontSize: 24 }}>
+            <p className="font-display t-h1">
               {user.profile?.title && user.profile.title !== "NONE" && (
                 <span className="text-gold" style={{ marginRight: 6 }}>{user.profile.title}</span>
               )}

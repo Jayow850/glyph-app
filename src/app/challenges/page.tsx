@@ -5,8 +5,10 @@ import { ChallengeActions } from "@/components/ChallengeActions";
 import { PlayPanel } from "@/components/challenge/PlayPanel";
 import { PlayerIdentity } from "@/components/ui/PlayerIdentity";
 import { Avatar } from "@/components/ui/Avatar";
+import { ListRow, ListGroup } from "@/components/ui/ListRow";
+import { FormCard } from "@/components/club/FormCard";
+import { streaksFor, recentForm } from "@/lib/services/streak";
 import { Icon, SPEED_ICON } from "@/components/ui/Icon";
-import { displayRating } from "@/lib/services/ratings";
 import { CATEGORY_ORDER, CATEGORY_LABEL, parseId, label, classify } from "@engine/game/timeControls";
 import { sideToMove, readClocks } from "@/lib/game-clock";
 
@@ -20,30 +22,36 @@ function clockOf(tc: string) {
   return { text: label(base, increment), category: classify(base, increment) };
 }
 
-function SectionHeader({ children, count }: { children: React.ReactNode; count?: number }) {
+function SectionHeader({
+  children,
+  count,
+  urgent = false,
+  info,
+}: {
+  children: React.ReactNode;
+  count?: number;
+  /** Gold is for something that wants an answer, not for counting. */
+  urgent?: boolean;
+  /** Help belongs in the header, not as a row of its own. */
+  info?: React.ReactNode;
+}) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "var(--s2)", marginBottom: "var(--s3)" }}>
-      <h2
-        style={{
-          fontFamily: "var(--font-body)",
-          fontSize: 12, fontWeight: 600, letterSpacing: "0.06em",
-          textTransform: "uppercase", color: "var(--text-muted)",
-        }}
-      >
-        {children}
-      </h2>
+      <h2 className="section-label">{children}</h2>
       {count !== undefined && count > 0 && (
         <span
           className="digits"
           style={{
             fontSize: 11, fontWeight: 700, minWidth: 18, textAlign: "center",
             padding: "1px 6px", borderRadius: "var(--r-full)",
-            background: "var(--gold)", color: "var(--gold-ink)",
+            background: urgent ? "var(--gold)" : "var(--surface-2)",
+            color: urgent ? "var(--gold-ink)" : "var(--text-muted)",
           }}
         >
           {count}
         </span>
       )}
+      {info && <span style={{ marginLeft: "auto" }}>{info}</span>}
     </div>
   );
 }
@@ -182,13 +190,48 @@ export default async function ChallengesPage() {
   const seekRatingOf = (uid: string, category: string) =>
     seekRatings.find((r) => r.userId === uid && r.category === category) ?? null;
 
+  // Form: the streak read from the games themselves, this player's last
+  // results, and — the part only a club can do — who else is on a run.
+  const [streaks, form] = await Promise.all([
+    streaksFor(memberIds.length ? memberIds : [userId]),
+    recentForm(userId),
+  ]);
+
+  const mine = streaks.get(userId) ?? { days: 0, today: 0, recoverable: false, best: 0 };
+  const companions = [...streaks.entries()].filter(
+    ([id, st]) => id !== userId && st.days >= Math.max(1, mine.days),
+  ).length;
+
+  // Somebody whose run lapses tonight. One lapse turned into a game is
+  // the most useful thing this card can do.
+  const lapsing = [...streaks.entries()].find(
+    ([id, st]) => id !== userId && st.days > 0 && st.today === 0,
+  );
+  const lapsingProfile = lapsing
+    ? await prisma.profile.findUnique({
+        where: { userId: lapsing[0] },
+        select: { fullName: true, handle: true },
+      })
+    : null;
+
+  // The nearest round hundred that is actually in reach.
+  const milestone = CATEGORY_ORDER.map((c) => {
+    const row = byCategory[c];
+    if (!row) return null;
+    const target = (Math.floor(row.rating / 100) + 1) * 100;
+    return { category: CATEGORY_LABEL[c], points: Math.round(target - row.rating), target };
+  })
+    .filter((m): m is NonNullable<typeof m> => m !== null)
+    .sort((a, b) => a.points - b.points)[0] ?? null;
+
   const byCategory = Object.fromEntries(ratings.map((r) => [r.category, r]));
   const yourMove = activeGames.filter(
     (g) => sideToMove(g.fen) === (g.whiteId === userId ? "w" : "b"),
   ).length;
 
   return (
-    <div style={{ paddingTop: "var(--s5)", display: "flex", flexDirection: "column", gap: "var(--s5)" }}>
+    <div className="page-bottom"
+      style={{ paddingTop: "var(--s5)", display: "flex", flexDirection: "column", gap: "var(--s6)" }}>
       <h1 className="font-display t-display">Games</h1>
 
       {/* Who is around. Club apps are returned to for people, not for
@@ -215,8 +258,11 @@ export default async function ChallengesPage() {
                 </Link>
               ))}
             </span>
-            <span className="t-caption digits" style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
-              {onlineNow.length} online now
+            <span className="t-caption" style={{ color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+              <span className="digits">{onlineNow.length}</span> here now
+              {clubGames.length > 0 && (
+                <> · <span className="digits">{clubGames.length}</span> game{clubGames.length === 1 ? "" : "s"} live</>
+              )}
             </span>
             <span style={{ flex: 1 }} />
             <span
@@ -230,7 +276,7 @@ export default async function ChallengesPage() {
       {/* Anything waiting on you comes before anything you might start. */}
       {incoming.length > 0 && (
         <section>
-          <SectionHeader count={incoming.length}>Action required</SectionHeader>
+          <SectionHeader count={incoming.length} urgent>Waiting on you</SectionHeader>
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}>
             {incoming.map((c) => {
               const clock = clockOf(c.timeControl);
@@ -347,45 +393,52 @@ export default async function ChallengesPage() {
         </section>
       )}
 
-      {/* Somebody else's game, which you may walk over and watch. */}
+      {/* Somebody else's game, which you may walk over and watch.
+          Chess.com buries spectating and Lichess shows a number; for a
+          club, watching your clubmates play is the social act itself. */}
       {clubGames.length > 0 && (
         <section>
-          <SectionHeader count={clubGames.length}>Being played now</SectionHeader>
-          <div
-            style={{
-              display: "flex", gap: "var(--s3)", overflowX: "auto", paddingBottom: 2,
-              marginLeft: "calc(-1 * var(--s4))", marginRight: "calc(-1 * var(--s4))",
-              paddingLeft: "var(--s4)", paddingRight: "var(--s4)", scrollbarWidth: "none",
-            }}
-          >
+          <SectionHeader count={clubGames.length}>Live in your club</SectionHeader>
+          <ListGroup>
             {clubGames.map((g) => {
               const seats = watching.get(g.id) ?? 0;
               const clock = clockOf(g.timeControl);
+              const clocks = readClocks(g);
+              const turn = sideToMove(g.fen);
+              const ms = turn === "w" ? clocks.whiteMs : clocks.blackMs;
+              const mm = Math.floor(ms / 60000);
+              const ss = Math.floor((ms % 60000) / 1000);
+
               return (
-                <Link
+                <ListRow
                   key={g.id}
+                  size="sm"
                   href={`/game/${g.id}`}
-                  style={{
-                    flex: "0 0 auto", width: 210, textDecoration: "none", color: "inherit",
-                    background: "var(--surface)", border: "1px solid var(--border)",
-                    borderRadius: "var(--r-lg)", padding: "var(--s3)",
-                    display: "flex", flexDirection: "column", gap: "var(--s1)",
-                  }}
-                >
-                  <p style={{ fontSize: "var(--t-secondary)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {g.white.profile?.fullName ?? "White"} vs {g.black.profile?.fullName ?? "Black"}
-                  </p>
-                  <p className="t-caption digits" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
-                    <Icon name={SPEED_ICON[clock.category] ?? "timer"} size={12} />
-                    {clock.text} · move {Math.ceil(g.sans.length / 2)}
-                  </p>
-                  <p className="t-caption digits" style={{ color: seats > 0 ? "var(--gold)" : "var(--text-dim)" }}>
-                    {seats > 0 ? `${seats} watching` : "Be the first to watch"}
-                  </p>
-                </Link>
+                  avatar={false}
+                  icon={
+                    <span style={{ display: "flex", flexShrink: 0 }}>
+                      <Avatar name={g.white.profile?.fullName ?? "White"} size={30} />
+                      <span style={{ marginLeft: -8, display: "block" }}>
+                        <Avatar name={g.black.profile?.fullName ?? "Black"} size={30} />
+                      </span>
+                    </span>
+                  }
+                  name={`${g.white.profile?.fullName ?? "White"} vs ${g.black.profile?.fullName ?? "Black"}`}
+                  meta={[
+                    <span key="c" className="digits">{mm}:{String(ss).padStart(2, "0")}</span>,
+                    <span key="tc" className="digits">{clock.text}</span>,
+                    `move ${Math.ceil(g.sans.length / 2)}`,
+                    seats > 0 ? `${seats} watching` : null,
+                  ]}
+                  action={
+                    <span className="t-caption" style={{ color: "var(--gold)", fontWeight: 600 }}>
+                      Watch
+                    </span>
+                  }
+                />
               );
             })}
-          </div>
+          </ListGroup>
         </section>
       )}
 
@@ -393,61 +446,39 @@ export default async function ChallengesPage() {
       {openSeeks.length > 0 && (
         <section>
           <SectionHeader count={openSeeks.length}>Open in your club</SectionHeader>
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            {openSeeks.map((c, i) => {
+          <ListGroup>
+            {openSeeks.map((c) => {
               const clock = clockOf(c.timeControl);
               const mins = c.expiresAt
                 ? Math.max(0, Math.round((c.expiresAt.getTime() - Date.now()) / 60_000))
                 : null;
+              const theirs = seekRatingOf(c.fromId, clock.category);
+              const mineRow = byCategory[clock.category];
+              const gap = theirs && mineRow ? Math.round(theirs.rating - mineRow.rating) : null;
+
               return (
-                <div
+                <ListRow
                   key={c.id}
-                  style={{
-                    display: "flex", alignItems: "center", gap: "var(--s3)",
-                    padding: "var(--s3) var(--s4)", minHeight: 68,
-                    borderTop: i === 0 ? "none" : "1px solid var(--border)",
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <PlayerIdentity
-                      name={c.from.profile?.fullName ?? "A player"}
-                      handle={c.from.profile?.handle}
-                      country={c.from.profile?.country}
-                      title={c.from.profile?.title}
-                      size="sm"
-                      meta={
-                        <>
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                            <Icon name={SPEED_ICON[clock.category] ?? "timer"} size={13} />
-                            <span className="digits">{clock.text}</span>
-                          </span>
-                          <span>{c.rated ? "rated" : "casual"}</span>
-                          {(() => {
-                            const theirs = seekRatingOf(c.fromId, clock.category);
-                            const mineRow = byCategory[clock.category];
-                            if (!theirs) return null;
-                            const gap = mineRow ? theirs.rating - mineRow.rating : null;
-                            return (
-                              <span className="digits">
-                                {Math.round(theirs.rating)}
-                                {gap !== null && Math.abs(gap) >= 15 && (
-                                  <span style={{ color: "var(--text-dim)" }}>
-                                    {" "}{Math.abs(Math.round(gap))} {gap > 0 ? "above" : "below"} you
-                                  </span>
-                                )}
-                              </span>
-                            );
-                          })()}
-                          {mins !== null && <span className="digits">{mins}m left</span>}
-                        </>
-                      }
-                    />
-                  </div>
-                  <ChallengeActions challengeId={c.id} seek />
-                </div>
+                  name={c.from.profile?.fullName ?? "A player"}
+                  country={c.from.profile?.country}
+                  title={c.from.profile?.title}
+                  rating={theirs ? String(Math.round(theirs.rating)) : undefined}
+                  meta={[
+                    <span key="tc" style={{ display: "inline-flex", alignItems: "center", gap: 4, verticalAlign: "-2px" }}>
+                      <Icon name={SPEED_ICON[clock.category] ?? "timer"} size={12} />
+                      <span className="digits">{clock.text}</span>
+                    </span>,
+                    c.rated ? "rated" : "casual",
+                    gap !== null && Math.abs(gap) >= 15
+                      ? `${Math.abs(gap)} ${gap > 0 ? "above" : "below"} you`
+                      : null,
+                    mins !== null ? `${mins}m left` : null,
+                  ]}
+                  action={<ChallengeActions challengeId={c.id} seek />}
+                />
               );
             })}
-          </div>
+          </ListGroup>
         </section>
       )}
 
@@ -455,40 +486,47 @@ export default async function ChallengesPage() {
       {outgoing.length > 0 && (
         <section>
           <SectionHeader>Sent</SectionHeader>
-          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-            {outgoing.map((c, i) => {
+          <ListGroup>
+            {outgoing.map((c) => {
               const clock = clockOf(c.timeControl);
               const left = c.expiresAt
                 ? Math.max(0, Math.round((c.expiresAt.getTime() - Date.now()) / 60_000))
                 : minutesLeft(c.createdAt);
+              const openSeek = !c.to;
               return (
-                <div
+                <ListRow
                   key={c.id}
-                  style={{
-                    display: "flex", alignItems: "center", gap: "var(--s3)",
-                    padding: "var(--s3) var(--s4)", minHeight: 64,
-                    borderTop: i === 0 ? "none" : "1px solid var(--border)",
-                  }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <PlayerIdentity
-                      name={c.to?.profile?.fullName ?? "Anyone in your club"}
-                      country={c.to?.profile?.country}
-                      title={c.to?.profile?.title}
-                      size="sm"
-                      meta={
-                        <span className="digits">
-                          {clock.text} · {c.rated ? "rated" : "casual"}
-                          {left > 0 ? ` · expires in ${left} min` : " · expired"}
-                        </span>
-                      }
-                    />
-                  </div>
-                  <ChallengeActions challengeId={c.id} mine />
-                </div>
+                  size="sm"
+                  name={c.to?.profile?.fullName ?? "Anyone in your club"}
+                  country={c.to?.profile?.country}
+                  title={c.to?.profile?.title}
+                  icon={
+                    openSeek ? (
+                      // An open seek is not a person, so it does not get
+                      // a person's initials. It was rendering as "AI".
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: 34, height: 34, borderRadius: "var(--r-md)", flexShrink: 0,
+                          display: "grid", placeItems: "center",
+                          background: "var(--surface-2)", color: "var(--text-muted)",
+                          border: "1px dashed var(--border)",
+                        }}
+                      >
+                        <Icon name="inbox" size={17} />
+                      </span>
+                    ) : undefined
+                  }
+                  meta={[
+                    <span key="tc" className="digits">{clock.text}</span>,
+                    c.rated ? "rated" : "casual",
+                    left > 0 ? `expires in ${left} min` : "expired",
+                  ]}
+                  action={<ChallengeActions challengeId={c.id} mine />}
+                />
               );
             })}
-          </div>
+          </ListGroup>
         </section>
       )}
 
@@ -511,34 +549,36 @@ export default async function ChallengesPage() {
         </section>
       )}
 
-      {/* Rating is profile data, not a play control, so it sits last. */}
+      {/* Your form. Rating is part of it, not the whole of it. */}
       <section>
-        <SectionHeader>Your rating</SectionHeader>
-        <div
-          className="card"
-          style={{ padding: "var(--s2) var(--s1)", display: "grid", gridTemplateColumns: "repeat(4, 1fr)", borderRadius: "var(--r-md)" }}
-        >
-          {CATEGORY_ORDER.map((c, i) => {
-            const row = byCategory[c];
-            return (
-              <div
-                key={c}
-                style={{
-                  textAlign: "center", padding: "var(--s1) var(--s2)",
-                  borderLeft: i === 0 ? "none" : "1px solid var(--border)",
-                }}
-              >
-                <p className="digits" style={{ fontSize: 17, fontWeight: 600, color: row ? "var(--text)" : "var(--text-dim)" }}>
-                  {displayRating(row)}
-                </p>
-                <p style={{ fontSize: 10, letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--text-muted)" }}>
-                  {CATEGORY_LABEL[c]}
-                </p>
-              </div>
-            );
-          })}
-        </div>
+        <SectionHeader>Your form</SectionHeader>
+        <FormCard
+          streak={mine}
+          companions={companions}
+          nudge={
+            lapsing && lapsingProfile?.handle
+              ? {
+                  name: lapsingProfile.fullName ?? lapsingProfile.handle,
+                  handle: lapsingProfile.handle,
+                  days: lapsing[1].days,
+                }
+              : null
+          }
+          form={form}
+          ratings={Object.fromEntries(
+            CATEGORY_ORDER.map((c) => [
+              c,
+              byCategory[c] && {
+                rating: byCategory[c]!.rating,
+                rd: byCategory[c]!.rd,
+                games: byCategory[c]!.games,
+              },
+            ]),
+          )}
+          milestone={milestone}
+        />
       </section>
+
     </div>
   );
 }

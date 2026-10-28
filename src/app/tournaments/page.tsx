@@ -41,7 +41,7 @@ export default async function TournamentsPage() {
   return (
     <div style={{ paddingTop: 24, display: "flex", flexDirection: "column", gap: 16 }}>
       <div>
-        <h1 className="font-display" style={{ fontSize: 28 }}>Tournaments</h1>
+        <h1 className="font-display t-display">Tournaments</h1>
         <p className="text-ivory-meta" style={{ fontSize: 15 }}>
           Swiss pairings, live standings, and a wallchart you can print.
         </p>
@@ -59,7 +59,7 @@ export default async function TournamentsPage() {
             <Link key={t.id} href={`/tournaments/${t.id}`} style={{ textDecoration: "none", color: "inherit" }}>
               <article className="card" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                  <h2 className="font-display" style={{ fontSize: 19, flex: 1, minWidth: 0 }}>{t.name}</h2>
+                  <h2 className="font-display t-h2" style={{ flex: 1, minWidth: 0 }}>{t.name}</h2>
                   <StatusChip status={t.status} />
                 </div>
 

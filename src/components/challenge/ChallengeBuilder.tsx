@@ -156,7 +156,7 @@ export function ChallengeBuilder({ defaultPresetId = "600+0" }: { defaultPresetI
 
   return (
     <section className="card" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <h2 className="font-display" style={{ fontSize: 20 }}>New challenge</h2>
+      <h2 className="font-display t-h2">New challenge</h2>
 
       {/* Speed */}
       <div style={{ display: "flex", gap: 6 }}>
