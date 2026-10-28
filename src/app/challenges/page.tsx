@@ -123,6 +123,12 @@ export default async function ChallengesPage() {
   // relation, so the club names come back in a second, tiny query.
   // `in: []` simply matches nothing, so there is no empty-list branch to
   // keep in step — and no union of array types for the renderer to trip on.
+  // Declared here because the form block below reads it inside a
+  // CATEGORY_ORDER.map that runs immediately — a const referenced from
+  // a callback passes type-checking and then throws at runtime if the
+  // callback is not actually deferred.
+  const byCategory = Object.fromEntries(ratings.map((r) => [r.category, r]));
+
   const clubIds = memberships.map((m) => m.clubId);
   const [openSeeks, clubs] = await Promise.all([
     prisma.challenge.findMany({
@@ -224,7 +230,6 @@ export default async function ChallengesPage() {
     .filter((m): m is NonNullable<typeof m> => m !== null)
     .sort((a, b) => a.points - b.points)[0] ?? null;
 
-  const byCategory = Object.fromEntries(ratings.map((r) => [r.category, r]));
   const yourMove = activeGames.filter(
     (g) => sideToMove(g.fen) === (g.whiteId === userId ? "w" : "b"),
   ).length;
