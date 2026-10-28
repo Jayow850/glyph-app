@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Sheet } from "@/components/ui/Sheet";
-import { Avatar } from "@/components/ui/Avatar";
+import { PlayerIdentity } from "@/components/ui/PlayerIdentity";
 import { Icon } from "@/components/ui/Icon";
 
 export interface Player {
@@ -10,6 +10,7 @@ export interface Player {
   handle: string;
   fullName: string;
   country: string | null;
+  title: string | null;
   rating: string;
   reason: string;
   h2h: { w: number; l: number; d: number } | null;
@@ -48,25 +49,26 @@ function Row({ player, onPick }: { player: Player; onPick: (p: Player) => void }
         cursor: "pointer", textAlign: "left", color: "var(--text)",
       }}
     >
-      <Avatar name={player.fullName} size={40} />
-
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: "var(--t-body)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {player.fullName}
-        </p>
-        <p className="t-caption" style={{ color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          @{player.handle}
-          {played > 0 && (
-            <>
-              {" · "}
-              <span className="digits" style={{ color: h!.w > h!.l ? "var(--success)" : h!.w < h!.l ? "var(--danger)" : "var(--text-muted)" }}>
-                {h!.w}–{h!.l}–{h!.d}
-              </span>
-              {ago && ` · ${ago}`}
-            </>
-          )}
-          {played === 0 && player.reason && ` · ${player.reason}`}
-        </p>
+        <PlayerIdentity
+          name={player.fullName}
+          handle={player.handle}
+          country={player.country}
+          title={player.title}
+          size="md"
+          meta={
+            played > 0 ? (
+              <>
+                <span className="digits" style={{ color: h!.w > h!.l ? "var(--success)" : h!.w < h!.l ? "var(--danger)" : "var(--text-muted)", fontWeight: 600 }}>
+                  {h!.w}–{h!.l}–{h!.d}
+                </span>
+                {ago && <span>{ago}</span>}
+              </>
+            ) : player.reason ? (
+              <span>{player.reason}</span>
+            ) : null
+          }
+        />
       </div>
 
       <span className="digits" style={{ fontSize: "var(--t-secondary)", fontWeight: 600, color: "var(--gold)" }}>

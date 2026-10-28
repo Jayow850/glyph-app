@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ChallengeActions } from "@/components/ChallengeActions";
 import { PlayPanel } from "@/components/challenge/PlayPanel";
-import { Avatar } from "@/components/ui/Avatar";
+import { PlayerIdentity } from "@/components/ui/PlayerIdentity";
 import { Icon, SPEED_ICON } from "@/components/ui/Icon";
 import { displayRating } from "@/lib/services/ratings";
 import { CATEGORY_ORDER, CATEGORY_LABEL, parseId, label, classify } from "@engine/game/timeControls";
@@ -135,19 +135,23 @@ export default async function ChallengesPage() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)" }}>
-                    <Avatar name={c.from.profile?.fullName ?? "Player"} size={44} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {c.from.profile?.fullName ?? "A player"}
-                      </p>
-                      <p className="t-caption" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                        <span>@{c.from.profile?.handle}</span>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                          <Icon name={SPEED_ICON[clock.category] ?? "timer"} size={13} />
-                          <span className="digits">{clock.text}</span>
-                        </span>
-                        <Badge tone={c.rated ? "gold" : "muted"}>{c.rated ? "Rated" : "Casual"}</Badge>
-                      </p>
+                      <PlayerIdentity
+                        name={c.from.profile?.fullName ?? "A player"}
+                        handle={c.from.profile?.handle}
+                        country={c.from.profile?.country}
+                        title={c.from.profile?.title}
+                        size="md"
+                        meta={
+                          <>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                              <Icon name={SPEED_ICON[clock.category] ?? "timer"} size={13} />
+                              <span className="digits">{clock.text}</span>
+                            </span>
+                            <Badge tone={c.rated ? "gold" : "muted"}>{c.rated ? "Rated" : "Casual"}</Badge>
+                          </>
+                        }
+                      />
                     </div>
                   </div>
 
@@ -200,10 +204,12 @@ export default async function ChallengesPage() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: "var(--s2)" }}>
-                    <Avatar name={opp.profile?.fullName ?? "Player"} size={32} />
-                    <p style={{ fontSize: "var(--t-secondary)", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {opp.profile?.fullName ?? "Player"}
-                    </p>
+                    <PlayerIdentity
+                      name={opp.profile?.fullName ?? "Player"}
+                      country={opp.profile?.country}
+                      title={opp.profile?.title}
+                      size="sm"
+                    />
                   </div>
 
                   <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
@@ -249,15 +255,19 @@ export default async function ChallengesPage() {
                     borderTop: i === 0 ? "none" : "1px solid var(--border)",
                   }}
                 >
-                  <Avatar name={c.to?.profile?.fullName ?? "Open seek"} size={34} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ fontSize: "var(--t-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {c.to?.profile?.fullName ?? "Anyone in your club"}
-                    </p>
-                    <p className="t-caption digits" style={{ color: "var(--text-muted)" }}>
-                      {clock.text} · {c.rated ? "rated" : "casual"}
-                      {left > 0 ? ` · expires in ${left} min` : " · expired"}
-                    </p>
+                    <PlayerIdentity
+                      name={c.to?.profile?.fullName ?? "Anyone in your club"}
+                      country={c.to?.profile?.country}
+                      title={c.to?.profile?.title}
+                      size="sm"
+                      meta={
+                        <span className="digits">
+                          {clock.text} · {c.rated ? "rated" : "casual"}
+                          {left > 0 ? ` · expires in ${left} min` : " · expired"}
+                        </span>
+                      }
+                    />
                   </div>
                   <ChallengeActions challengeId={c.id} mine />
                 </div>

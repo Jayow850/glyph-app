@@ -5,12 +5,12 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Engine } from "@engine/game/engine";
 import { PlayBoard } from "@/components/social/PlayBoard";
-import { PieceMark } from "@/components/social/Pieces";
+import { Piece, PieceMark } from "@/components/social/Pieces";
 import { BoardThemePicker } from "@/components/social/BoardThemePicker";
 import { GameChat } from "@/components/social/GameChat";
 import { Sheet } from "@/components/ui/Sheet";
 import { Icon, type IconName } from "@/components/ui/Icon";
-import { Avatar } from "@/components/ui/Avatar";
+import { PlayerIdentity } from "@/components/ui/PlayerIdentity";
 import { GameOverSheet } from "@/components/game/GameOverSheet";
 import { playForSan, playEnd, playMove, playLowTime, isMuted, setMuted } from "@/lib/sound";
 
@@ -18,23 +18,31 @@ const gridToX88 = (i: number) => (7 - Math.floor(i / 8)) * 16 + (i % 8);
 const x88ToGrid = (s: number) => (7 - (s >> 4)) * 8 + (s & 7);
 
 const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9 };
+/** Captured pieces read pawn → knight → bishop → rook → queen, as on every board. */
+const ORDER: Record<string, number> = { p: 0, n: 1, b: 2, r: 3, q: 4 };
 
 function frameFromFen(fen: string): string[] {
   return fen.split(" ")[0].split("/").map((r) => r.replace(/\d/g, (d) => ".".repeat(Number(d))));
 }
 
+/**
+ * Material is derived from the position every time, never from a stored
+ * list — so it stays correct through promotions, takebacks and reconnects.
+ */
 function capturedFrom(frame: string[]) {
   const full: Record<string, number> = { P: 8, N: 2, B: 2, R: 2, Q: 1, p: 8, n: 2, b: 2, r: 2, q: 1 };
   const onBoard: Record<string, number> = {};
   frame.join("").split("").forEach((ch) => { if (ch !== ".") onBoard[ch] = (onBoard[ch] ?? 0) + 1; });
+
   const whiteLost: string[] = [], blackLost: string[] = [];
   for (const [piece, count] of Object.entries(full)) {
-    const missing = count - (onBoard[piece] ?? 0);
+    const missing = Math.max(0, count - (onBoard[piece] ?? 0));
     for (let i = 0; i < missing; i++) {
       (piece === piece.toUpperCase() ? whiteLost : blackLost).push(piece);
     }
   }
-  return { whiteLost, blackLost };
+  const byType = (a: string, b: string) => ORDER[a.toLowerCase()] - ORDER[b.toLowerCase()];
+  return { whiteLost: whiteLost.sort(byType), blackLost: blackLost.sort(byType) };
 }
 
 function changedSquares(prev: string[], next: string[]): number[] {
@@ -43,6 +51,19 @@ function changedSquares(prev: string[], next: string[]): number[] {
   const out: number[] = [];
   for (let i = 0; i < 64; i++) if (a[i] !== b[i]) out.push(i);
   return out.length > 4 ? [] : out;
+}
+
+/** Replay the game to a given ply so any earlier position can be shown. */
+function positionAtPly(sans: string[], ply: number): { fen: string; move: number[] } {
+  const e = new Engine();
+  let touched: number[] = [];
+  for (let i = 0; i < ply && i < sans.length; i++) {
+    const m = e.legalMoves().find((x) => x.san === sans[i]);
+    if (!m) break;
+    touched = [x88ToGrid(m.from), x88ToGrid(m.to)];
+    e.move(m.from, m.to, m.promotion);
+  }
+  return { fen: e.fen(), move: touched };
 }
 
 function buildPgn(sans: string[], white: string, black: string, result: string) {
@@ -61,8 +82,6 @@ function buildPgn(sans: string[], white: string, black: string, result: string) 
 
 function formatClock(ms: number): string {
   const total = Math.max(0, ms) / 1000;
-  // Tenths once it is genuinely tight. A full minute of flickering
-  // decimals is noise; both big sites show them in the last seconds.
   if (total < 20) return `${Math.floor(total)}.${Math.floor((total % 1) * 10)}`;
   const mins = Math.floor(total / 60);
   const secs = Math.floor(total % 60);
@@ -74,74 +93,94 @@ function Clock({ ms, running, idle, increment }: { ms: number; running: boolean;
   const urgent = ms <= 10_000 && running;
 
   return (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 5, flexShrink: 0 }}>
-      <span
-        className={`digits${urgent ? " clock-urgent" : ""}`}
-        style={{
-          fontSize: 26, fontWeight: 600, padding: "6px 13px", borderRadius: "var(--r-md)",
-          minWidth: 104, textAlign: "center",
-          background: running ? (low ? "var(--danger-solid)" : "var(--gold-wash)") : "transparent",
-          color: running ? (low ? "#FFEFEF" : "var(--gold)") : low && !idle ? "var(--danger)" : "var(--text-muted)",
-          border: `1px solid ${running ? (low ? "var(--danger-solid)" : "var(--gold)") : "var(--border)"}`,
-          transition: "background 200ms var(--ease), color 200ms var(--ease), border-color 200ms var(--ease)",
-        }}
-      >
-        {formatClock(ms)}
-      </span>
+    <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
       {increment > 0 && (
         <span className="digits" style={{ fontSize: 11, color: "var(--text-dim)" }}>+{increment / 1000}</span>
       )}
+      <span
+        className={`digits${urgent ? " clock-urgent" : ""}`}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 6,
+          fontSize: 27, fontWeight: 600, padding: "5px 13px", borderRadius: "var(--r-md)",
+          minWidth: 112, justifyContent: "center",
+          background: running ? (low ? "var(--danger-solid)" : "var(--gold)") : "transparent",
+          color: running ? (low ? "#FFEFEF" : "var(--gold-ink)") : low && !idle ? "var(--danger)" : "var(--text-muted)",
+          border: running ? "1px solid transparent" : "1px solid var(--border)",
+          transition: "background 180ms var(--ease), color 180ms var(--ease)",
+        }}
+      >
+        {running && <Icon name="clock" size={15} strokeWidth={2} />}
+        {formatClock(ms)}
+      </span>
     </div>
   );
 }
 
+function ColourPip({ white }: { white: boolean }) {
+  return (
+    <span
+      aria-label={white ? "plays White" : "plays Black"}
+      title={white ? "White" : "Black"}
+      style={{
+        width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
+        background: white ? "#F7F4EC" : "#242429",
+        border: "1px solid rgba(255,255,255,0.35)",
+      }}
+    />
+  );
+}
+
 function PlayerBar({
-  name, rating, country, title, delta, captured, advantage, ms, running, idle, increment,
+  white, name, rating, country, title, delta, captured, advantage, ms, running, idle, increment,
 }: {
-  name: string; rating: string; country?: string | null; title?: string | null;
+  white: boolean; name: string; rating: string; country?: string | null; title?: string | null;
   delta: number | null; captured: string[]; advantage: number;
   ms: number; running: boolean; idle: boolean; increment: number;
 }) {
-  const hasTitle = Boolean(title) && title !== "NONE";
-
   return (
     <div
       style={{
         display: "flex", alignItems: "center", gap: "var(--s3)",
-        padding: "var(--s2) var(--s3)", minHeight: 56, flexShrink: 0,
+        padding: "var(--s2) var(--s3)", minHeight: 54, flexShrink: 0,
       }}
     >
-      <Avatar name={name} size={36} ring={running} />
-
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-          {hasTitle && (
-            <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 5px", borderRadius: 4, background: "var(--gold)", color: "var(--gold-ink)", flexShrink: 0 }}>
-              {title}
-            </span>
-          )}
-          <span style={{ fontSize: 15, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {name}
-          </span>
-          {country && (
-            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", padding: "1px 5px", borderRadius: 4, background: "var(--surface-2)", color: "var(--text-muted)", flexShrink: 0 }}>
-              {country.toUpperCase()}
-            </span>
-          )}
-          <span className="digits" style={{ fontSize: 12, color: "var(--text-muted)", flexShrink: 0 }}>{rating}</span>
-          {delta !== null && (
-            <span className="digits" style={{ fontSize: 12, fontWeight: 700, flexShrink: 0, color: delta > 0 ? "var(--success)" : delta < 0 ? "var(--danger)" : "var(--text-muted)" }}>
-              {delta > 0 ? "+" : ""}{delta}
-            </span>
-          )}
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 1, minHeight: 16, flexWrap: "wrap" }}>
-          {captured.map((p, i) => <PieceMark key={i} code={p} size={14} />)}
-          {advantage > 0 && (
-            <span className="digits" style={{ fontSize: 12, marginLeft: 5, color: "var(--gold)", fontWeight: 600 }}>+{advantage}</span>
-          )}
-        </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <PlayerIdentity
+          name={name}
+          country={country}
+          title={title}
+          size="sm"
+          active={running}
+          leading={<ColourPip white={white} />}
+          trailing={
+            <>
+              <span className="digits" style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>{rating}</span>
+              {delta !== null && (
+                <span
+                  className="digits"
+                  style={{
+                    fontSize: 12, fontWeight: 700,
+                    color: delta > 0 ? "var(--success)" : delta < 0 ? "var(--danger)" : "var(--text-muted)",
+                  }}
+                >
+                  {delta > 0 ? "+" : ""}{delta}
+                </span>
+              )}
+            </>
+          }
+          meta={
+            <>
+              {/* Kept on one line of its own height so the bar never jumps
+                  as the first piece comes off. */}
+              <span style={{ display: "flex", alignItems: "center", gap: 1, minHeight: 15, flexWrap: "wrap" }}>
+                {captured.map((p, i) => <PieceMark key={i} code={p} size={13} />)}
+              </span>
+              {advantage > 0 && (
+                <span className="digits" style={{ color: "var(--gold)", fontWeight: 700 }}>+{advantage}</span>
+              )}
+            </>
+          }
+        />
       </div>
 
       <Clock ms={ms} running={running} idle={idle} increment={increment} />
@@ -150,25 +189,27 @@ function PlayerBar({
 }
 
 function ActionButton({
-  icon, label, onClick, tone = "normal", badge,
+  icon, label, onClick, tone = "normal", disabled = false, wide = false,
 }: {
-  icon: IconName; label: string; onClick: () => void; tone?: "normal" | "danger"; badge?: boolean;
+  icon: IconName; label: string; onClick: () => void;
+  tone?: "normal" | "danger"; disabled?: boolean; wide?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
       className="press tap"
       style={{
-        flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        gap: 3, background: "transparent", border: "none", cursor: "pointer", position: "relative",
-        color: tone === "danger" ? "var(--danger)" : "var(--text-muted)",
+        flex: wide ? 1 : "0 0 auto", minWidth: 54,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        gap: 2, background: "transparent", border: "none", cursor: disabled ? "default" : "pointer",
+        color: disabled ? "var(--text-dim)" : tone === "danger" ? "var(--danger)" : "var(--text-muted)",
+        opacity: disabled ? 0.45 : 1,
       }}
     >
       <Icon name={icon} size={20} />
-      <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.02em" }}>{label}</span>
-      {badge && (
-        <span style={{ position: "absolute", top: 4, right: "28%", width: 7, height: 7, borderRadius: "50%", background: "var(--gold)" }} />
-      )}
+      <span style={{ fontSize: 10, fontWeight: 600 }}>{label}</span>
     </button>
   );
 }
@@ -225,29 +266,42 @@ export function LiveGameBoard({
   const [coordsOn, setCoordsOn] = useState(true);
   const [flipOverride, setFlipOverride] = useState<boolean | null>(null);
   const [soundOff, setSoundOff] = useState(false);
+  const [previewPly, setPreviewPly] = useState<number | null>(null);
+  const [promo, setPromo] = useState<{ from: number; to: number } | null>(null);
 
   const router = useRouter();
   const prevFrameRef = useRef<string[]>(frameFromFen(initialFen));
   const moveCountRef = useRef<number>(initialSans.length);
   const statusRef = useRef<string>(initialStatus);
+  const stripRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setSoundOff(isMuted()), []);
 
   const live = status === "ACTIVE";
+  const reviewing = previewPly !== null;
+
+  const preview = useMemo(
+    () => (previewPly === null ? null : positionAtPly(sans, previewPly)),
+    [sans, previewPly],
+  );
+  const viewFen = preview ? preview.fen : fen;
+
   const engine = useMemo(() => new Engine(fen), [fen]);
   const legal = useMemo(() => engine.legalMoves(), [engine]);
   const turn = engine.turn;
-  const myTurn = youAre !== null && turn === youAre && live;
+  const myTurn = youAre !== null && turn === youAre && live && !reviewing;
   const flipped = flipOverride !== null ? flipOverride : youAre === "b";
 
-  const frame = frameFromFen(fen);
+  const frame = frameFromFen(viewFen);
+  const liveFrame = frameFromFen(fen);
 
   const checkSquare = useMemo(() => {
-    if (!engine.inCheck()) return null;
-    const board = fen.split(" ")[0].split("/").map((r) => r.replace(/\d/g, (d) => ".".repeat(Number(d)))).join("");
-    const idx = board.indexOf(turn === "w" ? "K" : "k");
+    const e = new Engine(viewFen);
+    if (!e.inCheck()) return null;
+    const board = viewFen.split(" ")[0].split("/").map((r) => r.replace(/\d/g, (d) => ".".repeat(Number(d)))).join("");
+    const idx = board.indexOf(e.turn === "w" ? "K" : "k");
     return idx === -1 ? null : idx;
-  }, [engine, turn, fen]);
+  }, [viewFen]);
 
   const applyState = useCallback((data: ServerState) => {
     const nextFrame = frameFromFen(data.fen);
@@ -297,8 +351,6 @@ export function LiveGameBoard({
     return () => clearInterval(t);
   }, [gameId, fen, status, live, applyState, router]);
 
-  // Local countdown between polls, display only. Nothing moves until
-  // White has actually started the game.
   useEffect(() => {
     if (!live || !ticking) return;
     const t = setInterval(() => {
@@ -320,38 +372,57 @@ export function LiveGameBoard({
     }
   }, [whiteMs, blackMs, live, ticking, youAre]);
 
+  // Keep the strip showing the latest move unless the player is reviewing.
+  useEffect(() => {
+    if (reviewing) return;
+    const el = stripRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  }, [sans.length, reviewing]);
+
   const targets = useMemo(() => {
     if (selected === null || !myTurn) return [];
     const from88 = gridToX88(selected);
     return legal.filter((m) => m.from === from88).map((m) => x88ToGrid(m.to));
   }, [selected, legal, myTurn]);
 
-  const { whiteLost, blackLost } = capturedFrom(frame);
+  const { whiteLost, blackLost } = capturedFrom(liveFrame);
   const scoreFor = (lost: string[]) => lost.reduce((s, p) => s + (VALUE[p.toLowerCase()] ?? 0), 0);
   const edge = scoreFor(whiteLost) - scoreFor(blackLost);
 
-  async function handleSquare(idx: number) {
-    if (!myTurn || busy) return;
+  async function sendMove(from: number, to: number, promotion: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/games/${gameId}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ from, to, promotion, seq: sans.length }),
+      });
+      const data = await res.json();
+      setSelected(null);
+      if (res.ok) { applyState(data); router.refresh(); }
+      else if (data.error === "flagged") { applyState(data); setError("Your flag fell."); }
+      else setError(data.error === "stale_seq" ? "The position moved on — retry." : "That move was rejected.");
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleSquare(idx: number) {
+    if (!myTurn || busy || promo) return;
 
     if (selected !== null && targets.includes(idx)) {
-      setBusy(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/games/${gameId}/move`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ from: selected, to: idx, promotion: "q", seq: sans.length }),
-        });
-        const data = await res.json();
-        setSelected(null);
-        if (res.ok) { applyState(data); router.refresh(); }
-        else if (data.error === "flagged") { applyState(data); setError("Your flag fell."); }
-        else setError(data.error === "stale_seq" ? "The position moved on — retry." : "That move was rejected.");
-      } catch {
-        setError("Could not reach the server.");
-      } finally {
-        setBusy(false);
+      const f88 = gridToX88(selected);
+      const t88 = gridToX88(idx);
+      // A pawn reaching the last rank is four different moves. Ask which
+      // one, over the square itself — auto-queening loses real games.
+      if (legal.filter((m) => m.from === f88 && m.to === t88 && m.promotion).length > 1) {
+        setPromo({ from: selected, to: idx });
+        return;
       }
+      void sendMove(selected, idx, "q");
       return;
     }
 
@@ -415,6 +486,7 @@ export function LiveGameBoard({
 
   const topIsWhite = flipped;
   const bar = (isWhite: boolean) => ({
+    white: isWhite,
     name: isWhite ? whiteName : blackName,
     rating: isWhite ? whiteRating : blackRating,
     country: isWhite ? whiteCountry : blackCountry,
@@ -423,7 +495,7 @@ export function LiveGameBoard({
     captured: isWhite ? blackLost : whiteLost,
     advantage: isWhite ? -edge : edge,
     ms: isWhite ? whiteMs : blackMs,
-    running: live && ticking && turn === (isWhite ? "w" : "b"),
+    running: live && ticking && turn === (isWhite ? "w" : "b") && !reviewing,
     idle: !ticking,
     increment: incrementMs,
   });
@@ -439,6 +511,13 @@ export function LiveGameBoard({
     if (i % 2 === 0) movePairs[n].w = san; else movePairs[n].b = san;
   });
 
+  const atPly = previewPly ?? sans.length;
+  const stepTo = (ply: number) => {
+    const clamped = Math.max(0, Math.min(sans.length, ply));
+    setPreviewPly(clamped >= sans.length ? null : clamped);
+    setSelected(null);
+  };
+
   const btn = (primary: boolean): CSSProperties => ({
     flex: 1, borderRadius: "var(--r-md)", padding: "11px 0", fontWeight: 600, fontSize: 14,
     border: primary ? "none" : "1px solid var(--border)",
@@ -452,8 +531,8 @@ export function LiveGameBoard({
       {movePairs.map((p) => (
         <div key={p.n} className="digits" style={{ display: "flex", gap: 8, padding: "5px 2px", fontSize: 14 }}>
           <span style={{ color: "var(--text-dim)", minWidth: 20 }}>{p.n}.</span>
-          <span style={{ minWidth: 46 }}>{p.w}</span>
-          <span style={{ color: "var(--text-muted)" }}>{p.b ?? ""}</span>
+          <button onClick={() => stepTo(p.n * 2 - 1)} style={{ minWidth: 46, background: "none", border: "none", color: "inherit", font: "inherit", textAlign: "left", cursor: "pointer", padding: 0 }}>{p.w}</button>
+          <button onClick={() => stepTo(p.n * 2)} style={{ background: "none", border: "none", color: "var(--text-muted)", font: "inherit", textAlign: "left", cursor: "pointer", padding: 0 }}>{p.b ?? ""}</button>
         </div>
       ))}
     </div>
@@ -462,7 +541,6 @@ export function LiveGameBoard({
   return (
     <div className="gameroom ingame">
       <div className="gameroom-board">
-        {/* Slim game header — mobile only; the app bar is hidden in-game. */}
         <div
           className="game-header"
           style={{
@@ -482,7 +560,8 @@ export function LiveGameBoard({
               vs {opponent}
             </p>
             <p className="t-caption digits" style={{ color: "var(--text-muted)", lineHeight: 1.1 }}>
-              {speedLabel} · {timeControl} · {rated ? "rated" : "casual"}
+              {youAre && <>You play {youAre === "w" ? "White" : "Black"} · </>}
+              {speedLabel} {timeControl} · {rated ? "rated" : "casual"}
             </p>
           </div>
 
@@ -498,27 +577,86 @@ export function LiveGameBoard({
           </button>
         </div>
 
+        {/* Move strip — one line, scrolls with the game, tap to review. */}
+        {sans.length > 0 && (
+          <div
+            ref={stripRef}
+            className="move-strip"
+            style={{
+              display: "flex", alignItems: "center", gap: 4, overflowX: "auto",
+              padding: "5px var(--s3)", flexShrink: 0, scrollbarWidth: "none",
+              borderBottom: "1px solid var(--border)",
+            }}
+          >
+            {sans.map((san, i) => {
+              const current = atPly === i + 1;
+              const isWhiteMove = i % 2 === 0;
+              return (
+                <button
+                  key={i}
+                  onClick={() => stepTo(i + 1)}
+                  className="digits press"
+                  style={{
+                    flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4,
+                    padding: "3px 8px", borderRadius: "var(--r-full)", border: "none",
+                    fontSize: 13, fontWeight: current ? 700 : 500, cursor: "pointer",
+                    background: current ? "var(--gold)" : "transparent",
+                    color: current ? "var(--gold-ink)" : "var(--text-muted)",
+                  }}
+                >
+                  {isWhiteMove && <span style={{ opacity: 0.55 }}>{i / 2 + 1}.</span>}
+                  {san}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <PlayerBar {...bar(topIsWhite)} />
 
         <div className="board-slot">
-          <div className={`board-fit${myTurn ? " yours" : ""}`}>
+          <div className={`board-fit${myTurn ? " yours" : ""}`} style={{ position: "relative" }}>
             <PlayBoard
+              bare
               frame={frame}
               selected={selected}
               targets={targets}
-              lastMove={lastMove}
+              lastMove={preview ? preview.move : lastMove}
               onSquare={handleSquare}
               flipped={flipped}
               checkSquare={checkSquare}
               coords={coordsOn}
               disabled={!myTurn}
             />
+            {promo && (
+              <PromotionPicker
+                to={promo.to}
+                flipped={flipped}
+                colour={turn}
+                onPick={(piece) => { const m = promo; setPromo(null); void sendMove(m.from, m.to, piece); }}
+                onCancel={() => { setPromo(null); setSelected(null); }}
+              />
+            )}
           </div>
         </div>
 
         <PlayerBar {...bar(!topIsWhite)} />
 
-        {/* A draw offer is a slim banner, never a dialogue over a running clock. */}
+        {reviewing && (
+          <button
+            onClick={() => stepTo(sans.length)}
+            className="press"
+            style={{
+              flexShrink: 0, border: "none", cursor: "pointer",
+              background: "var(--gold-wash)", color: "var(--gold)",
+              borderTop: "1px solid var(--gold)", padding: "var(--s2)",
+              fontSize: 13, fontWeight: 700, letterSpacing: "0.04em",
+            }}
+          >
+            REVIEWING MOVE {atPly} — BACK TO LIVE
+          </button>
+        )}
+
         {theirOffer && live && (
           <div
             style={{
@@ -537,32 +675,33 @@ export function LiveGameBoard({
           <p style={{ flexShrink: 0, color: "var(--danger)", fontSize: 13, padding: "0 var(--s3) var(--s1)" }}>{error}</p>
         )}
 
-        {/* Action bar — compact icons, not full-width buttons. */}
         <div
           className="game-actions"
           style={{
-            display: "flex", alignItems: "stretch", height: 54, flexShrink: 0,
+            display: "flex", alignItems: "stretch", height: 56, flexShrink: 0,
             borderTop: "1px solid var(--border)", background: "var(--surface)",
           }}
         >
-          {live && youAre ? (
-            <>
-              {canAbort ? (
-                <ActionButton icon="x" label="Abort" tone="danger" onClick={() => post("abort")} />
-              ) : (
-                <ActionButton icon="x" label="Resign" tone="danger" onClick={() => setConfirmResign(true)} />
-              )}
-              <ActionButton icon="check" label={yourOffer ? "Offered" : "Draw"} onClick={() => post("draw", { action: "offer" })} />
-            </>
-          ) : (
-            <ActionButton icon="swords" label="Rematch" onClick={rematch} />
+          <ActionButton icon="list" label="Moves" onClick={() => setSheet("moves")} />
+          <ActionButton icon="chat" label="Chat" onClick={() => setSheet("chat")} />
+
+          <div style={{ flex: 1 }} />
+
+          {live && youAre && (
+            canAbort
+              ? <ActionButton icon="x" label="Abort" tone="danger" onClick={() => post("abort")} />
+              : <>
+                  <ActionButton icon="flag" label="Resign" tone="danger" onClick={() => setConfirmResign(true)} />
+                  <ActionButton icon="handshake" label={yourOffer ? "Offered" : "Draw"} onClick={() => post("draw", { action: "offer" })} />
+                </>
           )}
-          <ActionButton icon="clock" label="Moves" onClick={() => setSheet("moves")} />
-          <ActionButton icon="users" label="Chat" onClick={() => setSheet("chat")} />
+          {!live && youAre && <ActionButton icon="swords" label="Rematch" onClick={rematch} />}
+
+          <ActionButton icon="chevronLeft" label="Prev" disabled={atPly === 0} onClick={() => stepTo(atPly - 1)} />
+          <ActionButton icon="chevronRight" label="Next" disabled={atPly >= sans.length} onClick={() => stepTo(atPly + 1)} />
         </div>
       </div>
 
-      {/* Desktop keeps everything beside the board — there is room for it. */}
       <div className="gameroom-panel">
         <div style={{ display: "flex", alignItems: "center", gap: "var(--s2)" }}>
           <p style={{ flex: 1, fontSize: 16, fontWeight: 600, color: live ? "var(--gold)" : "var(--text)" }}>
@@ -573,21 +712,12 @@ export function LiveGameBoard({
 
         {live && youAre && (
           <div style={{ display: "flex", gap: "var(--s3)" }}>
-            {confirmResign ? (
-              <>
-                <button onClick={() => { setConfirmResign(false); post("resign"); }} disabled={busy} className="press" style={{ ...btn(false), background: "var(--danger-solid)", color: "#FFEFEF", border: "none" }}>Confirm resign</button>
-                <button onClick={() => setConfirmResign(false)} className="press" style={btn(false)}>Keep playing</button>
-              </>
-            ) : (
-              <>
-                {canAbort
-                  ? <button onClick={() => post("abort")} disabled={busy} className="press" style={btn(false)}>Abort</button>
-                  : <button onClick={() => setConfirmResign(true)} disabled={busy} className="press" style={btn(false)}>Resign</button>}
-                <button onClick={() => post("draw", { action: "offer" })} disabled={busy || yourOffer} className="press" style={btn(false)}>
-                  {yourOffer ? "Draw offered" : "Offer draw"}
-                </button>
-              </>
-            )}
+            {canAbort
+              ? <button onClick={() => post("abort")} disabled={busy} className="press" style={btn(false)}>Abort</button>
+              : <button onClick={() => setConfirmResign(true)} disabled={busy} className="press" style={btn(false)}>Resign</button>}
+            <button onClick={() => post("draw", { action: "offer" })} disabled={busy || yourOffer} className="press" style={btn(false)}>
+              {yourOffer ? "Draw offered" : "Offer draw"}
+            </button>
           </div>
         )}
 
@@ -598,8 +728,6 @@ export function LiveGameBoard({
 
         <GameChat gameId={gameId} youId={youId} canWrite={youAre !== null} finished={!live} />
       </div>
-
-      {/* ---- sheets ---- */}
 
       <Sheet open={sheet === "moves"} onClose={() => setSheet(null)} title="Moves">
         {sans.length === 0 ? <div style={{ height: 24 }} /> : MoveList}
@@ -615,18 +743,13 @@ export function LiveGameBoard({
             <p className="section-label" style={{ marginBottom: "var(--s2)" }}>Board</p>
             <BoardThemePicker />
           </div>
-
           <SettingRow
             label="Sound"
             on={!soundOff}
             onToggle={() => { const next = !soundOff; setMuted(next); setSoundOff(next); if (!next) playMove(); }}
           />
           <SettingRow label="Coordinates" on={coordsOn} onToggle={() => setCoordsOn((v) => !v)} />
-          <SettingRow
-            label="Flip board"
-            on={flipped}
-            onToggle={() => setFlipOverride(!flipped)}
-          />
+          <SettingRow label="Flip board" on={flipped} onToggle={() => setFlipOverride(!flipped)} />
         </div>
       </Sheet>
 
@@ -670,11 +793,70 @@ export function LiveGameBoard({
       />
 
       {rematchState !== "idle" && (
-        <p style={{ position: "fixed", bottom: 70, left: 0, right: 0, textAlign: "center", fontSize: 13, color: "var(--gold)", zIndex: 70 }}>
+        <p style={{ position: "fixed", bottom: 72, left: 0, right: 0, textAlign: "center", fontSize: 13, color: "var(--gold)", zIndex: 70 }}>
           {rematchState === "accepted" ? `${opponent} already offered — check Games.` : `Rematch offered to ${opponent}.`}
         </p>
       )}
     </div>
+  );
+}
+
+const PROMO_NAME: Record<string, string> = { q: "queen", r: "rook", b: "bishop", n: "knight" };
+
+function PromotionPicker({
+  to, flipped, colour, onPick, onCancel,
+}: {
+  to: number;
+  flipped: boolean;
+  colour: "w" | "b";
+  onPick: (piece: string) => void;
+  onCancel: () => void;
+}) {
+  const cell = flipped ? 63 - to : to;          // where that square is drawn
+  const col = cell % 8;
+  const row = Math.floor(cell / 8);
+  const down = row < 4;                          // grow inward from the edge
+  const pieces = colour === "w" ? ["Q", "R", "B", "N"] : ["q", "r", "b", "n"];
+
+  return (
+    <>
+      <button
+        onClick={onCancel}
+        aria-label="Cancel promotion"
+        style={{
+          position: "absolute", inset: 0, zIndex: 4, border: "none", padding: 0,
+          background: "rgba(13,13,15,0.6)", cursor: "pointer",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute", zIndex: 5, width: "12.5%",
+          left: `${col * 12.5}%`,
+          top: down ? `${row * 12.5}%` : "auto",
+          bottom: down ? "auto" : `${(7 - row) * 12.5}%`,
+          display: "flex",
+          flexDirection: down ? "column" : "column-reverse",
+          borderRadius: 7, overflow: "hidden",
+          boxShadow: "0 12px 34px rgba(0,0,0,0.65)",
+        }}
+      >
+        {pieces.map((p) => (
+          <button
+            key={p}
+            onClick={() => onPick(p.toLowerCase())}
+            aria-label={`Promote to ${PROMO_NAME[p.toLowerCase()]}`}
+            className="press"
+            style={{
+              aspectRatio: "1 / 1", display: "grid", placeItems: "center",
+              border: "none", padding: 0, cursor: "pointer",
+              background: "var(--surface)",
+            }}
+          >
+            <Piece code={p} />
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 

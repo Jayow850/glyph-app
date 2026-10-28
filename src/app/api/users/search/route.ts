@@ -19,6 +19,8 @@ export interface FoundPlayer {
   handle: string;
   fullName: string;
   country: string | null;
+  /** ChessTitle, or null. */
+  title: string | null;
   rating: string;
   reason: string;
   /** Head-to-head from the searcher's point of view. */
@@ -90,6 +92,7 @@ async function shape(
         handle: u.profile?.handle ?? "",
         fullName: u.profile?.fullName ?? u.profile?.handle ?? "Player",
         country: u.profile?.country ?? null,
+        title: u.profile?.title ?? null,
         rating: displayRating(u.glyphRatings.find((r) => r.category === category)),
         reason: REASON_LABEL[reasons.get(u.id) ?? "search"],
         h2h: record ? { w: record.w, l: record.l, d: record.d } : null,

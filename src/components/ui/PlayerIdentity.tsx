@@ -1,4 +1,5 @@
 import { Avatar } from "./Avatar";
+import { Flag } from "./Flag";
 
 export type PlayerSize = "sm" | "md" | "lg";
 
@@ -17,6 +18,10 @@ export interface PlayerIdentityProps {
   presence?: "online" | "away" | "offline" | null;
   /** Anything that belongs on the second line after the handle. */
   meta?: React.ReactNode;
+  /** Sits at the very start of the name line — e.g. the colour a player has. */
+  leading?: React.ReactNode;
+  /** Sits at the end of the name line — e.g. a rating and its delta. */
+  trailing?: React.ReactNode;
 }
 
 const SIZES: Record<PlayerSize, { avatar: number; name: number; meta: number }> = {
@@ -30,36 +35,6 @@ const PRESENCE_COLOR = {
   away: "var(--gold)",
   offline: "var(--text-dim)",
 } as const;
-
-/**
- * Country, as a code rather than an emoji flag.
- *
- * Emoji flags are not a safe cross-platform choice: Windows ships no
- * regional-indicator glyphs at all, so 🇳🇬 renders as two boxed letters
- * there while looking correct on the phone you tested on. A typographic
- * pill renders identically everywhere and sits better in this design
- * language. Swap for an SVG sprite later if real flags are wanted.
- */
-function CountryTag({ code }: { code: string }) {
-  return (
-    <span
-      title={code.toUpperCase()}
-      style={{
-        fontSize: 10,
-        fontWeight: 700,
-        letterSpacing: "0.06em",
-        padding: "1px 5px",
-        borderRadius: 4,
-        background: "var(--surface-2)",
-        color: "var(--text-muted)",
-        flexShrink: 0,
-        lineHeight: 1.5,
-      }}
-    >
-      {code.toUpperCase()}
-    </span>
-  );
-}
 
 function TitleBadge({ title }: { title: string }) {
   return (
@@ -96,10 +71,13 @@ export function PlayerIdentity({
   active = false,
   presence = null,
   meta,
+  leading,
+  trailing,
 }: PlayerIdentityProps) {
   const s = SIZES[size];
   const hasTitle = Boolean(title) && title !== "NONE";
   const secondLine = handle || rating || meta;
+
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "var(--s3)", minWidth: 0 }}>
@@ -120,6 +98,7 @@ export function PlayerIdentity({
 
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+          {leading}
           {hasTitle && <TitleBadge title={title as string} />}
           <span
             style={{
@@ -132,7 +111,8 @@ export function PlayerIdentity({
           >
             {name}
           </span>
-          {country && <CountryTag code={country} />}
+          {country && <Flag code={country} height={size === "lg" ? 15 : 12} />}
+          {trailing}
         </div>
 
         {secondLine && (
