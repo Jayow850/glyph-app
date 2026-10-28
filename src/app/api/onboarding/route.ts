@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { claimRating } from "@/lib/services/verification";
+import { onJoinClub } from "@/lib/services/onboarding";
 
 /**
  * Onboarding in one call: feel, imported rating ("you arrive with your
@@ -39,6 +40,9 @@ export async function POST(req: NextRequest) {
         create: { userId, clubId: club.id, role: "PLAYER" },
         update: { active: true },
       });
+      // The same arrival the join route produces. Without this, the most
+      // common way to join a club was the one way that went unnoticed.
+      await onJoinClub(club.id, userId);
     }
   }
 

@@ -91,22 +91,37 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             style={{ height: 56, display: "flex", alignItems: "center", justifyContent: "space-between" }}
           >
             {/* The only Fraunces in the product. */}
-            <Link href="/feed" className="wordmark press" style={{ fontSize: 23 }}>
+            <Link href={signedIn ? "/feed" : "/"} className="wordmark press" style={{ fontSize: 23 }}>
               GLYPH<span style={{ color: "var(--gold)" }}>.</span>
             </Link>
             <div style={{ display: "flex", alignItems: "center", gap: "var(--s1)" }}>
             <ThemeToggle compact />
-            <Link
-              href="/messages"
-              aria-label="Messages"
-              className="tap press"
-              style={{ display: "grid", placeItems: "center", color: "var(--text-muted)" }}
-            >
-              <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <rect x="3" y="5.5" width="18" height="13" rx="2.5" />
-                <path d="m3.8 7 7.1 5.2a2 2 0 0 0 2.2 0L20.2 7" />
-              </svg>
-            </Link>
+            {signedIn ? (
+              <Link
+                href="/messages"
+                aria-label="Messages"
+                className="tap press"
+                style={{ display: "grid", placeItems: "center", color: "var(--text-muted)" }}
+              >
+                <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <rect x="3" y="5.5" width="18" height="13" rx="2.5" />
+                  <path d="m3.8 7 7.1 5.2a2 2 0 0 0 2.2 0L20.2 7" />
+                </svg>
+              </Link>
+            ) : (
+              <Link
+                href="/signin"
+                className="press"
+                style={{
+                  display: "inline-flex", alignItems: "center", minHeight: 34,
+                  padding: "0 14px", borderRadius: "var(--r-full)",
+                  background: "var(--gold)", color: "var(--gold-ink)",
+                  fontSize: "var(--t-secondary)", fontWeight: 600, textDecoration: "none",
+                }}
+              >
+                Sign in
+              </Link>
+            )}
             </div>
           </div>
         </header>
@@ -116,21 +131,23 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {signedIn && <NotifyLayer />}
 
         <div className="layout">
-          <SideRail />
+          {signedIn && <SideRail />}
 
           <main className="shell page-bottom" style={{ minHeight: "calc(100vh - 56px)" }}>
             {children}
           </main>
 
-          <aside className="rail" style={{ paddingTop: "var(--s4)" }}>
-            <div className="card" style={{ position: "sticky", top: 72 }}>
-              <p className="section-label" style={{ marginBottom: "var(--s2)" }}>Move of the day</p>
-              <p className="t-secondary">Solve today&apos;s puzzle to keep the flame.</p>
-            </div>
-          </aside>
+          {signedIn && (
+            <aside className="rail" style={{ paddingTop: "var(--s4)" }}>
+              <div className="card" style={{ position: "sticky", top: 72 }}>
+                <p className="section-label" style={{ marginBottom: "var(--s2)" }}>Move of the day</p>
+                <p className="t-secondary">Solve today&apos;s puzzle to keep the flame.</p>
+              </div>
+            </aside>
+          )}
         </div>
 
-        <BottomNav />
+        {signedIn && <BottomNav />}
       </body>
     </html>
   );

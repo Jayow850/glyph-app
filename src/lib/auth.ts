@@ -1,16 +1,27 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 
+/**
+ * Google sign-in is deliberately NOT registered here.
+ *
+ * It was configured with `session: { strategy: "jwt" }` and no
+ * database adapter, which meant a Google login produced a session
+ * whose `uid` was Google's account id rather than a row in `User`.
+ * Every query keyed on that id came back empty, so the app silently
+ * broke for anyone who used it.
+ *
+ * Re-enabling it needs either `@auth/prisma-adapter`, or a `signIn`
+ * callback that finds-or-creates the `User` and `Profile` and puts
+ * the real database id on the token. Until one of those exists,
+ * leaving the provider out is what keeps /api/auth/signin/google
+ * from handing out broken sessions.
+ */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
+  pages: { signIn: "/signin" },
   providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    }),
     Credentials({
       credentials: { email: {}, password: {} },
       async authorize(creds) {
