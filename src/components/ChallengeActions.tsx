@@ -10,12 +10,16 @@ import { useRouter } from "next/navigation";
 export function ChallengeActions({
   challengeId,
   mine = false,
+  seek = false,
 }: {
   challengeId: string;
   /** True when this is a challenge you sent, so the only action is to withdraw. */
   mine?: boolean;
+  /** True for an open seek on the club board — one button, no decline. */
+  seek?: boolean;
 }) {
   const [busy, setBusy] = useState(false);
+  const [taken, setTaken] = useState(false);
   const router = useRouter();
 
   async function accept() {
@@ -27,6 +31,9 @@ export function ChallengeActions({
         router.push(`/game/${gameId}`);
         return;
       }
+      // 409 someone was faster, 410 it aged out. Either way it is gone,
+      // and saying so beats a button that silently does nothing.
+      if (res.status === 409 || res.status === 410) setTaken(true);
     } catch {
       /* fall through to re-enable the button */
     }
@@ -59,6 +66,25 @@ export function ChallengeActions({
   if (mine) {
     return (
       <button onClick={decline} disabled={busy} style={ghost}>Withdraw</button>
+    );
+  }
+
+  if (seek) {
+    return (
+      <button
+        onClick={accept}
+        disabled={busy || taken}
+        className="press"
+        style={{
+          background: taken ? "var(--surface-2)" : "var(--gold)",
+          color: taken ? "var(--text-muted)" : "var(--gold-ink)",
+          border: "none", borderRadius: 10, padding: "9px 18px",
+          fontSize: 14, fontWeight: 600, flexShrink: 0,
+          cursor: busy || taken ? "default" : "pointer", opacity: busy ? 0.5 : 1,
+        }}
+      >
+        {taken ? "Taken" : busy ? "…" : "Play"}
+      </button>
     );
   }
 

@@ -90,7 +90,7 @@ export default async function ChallengesPage() {
     );
   }
 
-  const [incoming, outgoing, activeGames, ratings] = await Promise.all([
+  const [incoming, outgoing, activeGames, ratings, memberships] = await Promise.all([
     prisma.challenge.findMany({
       where: { toId: userId, status: "pending" },
       include: { from: { include: { profile: true } } },
@@ -107,7 +107,30 @@ export default async function ChallengesPage() {
       orderBy: { updatedAt: "desc" },
     }),
     prisma.glyphRating.findMany({ where: { userId } }),
+    prisma.membership.findMany({ where: { userId, active: true }, select: { clubId: true } }),
   ]);
+
+  // The club board. Challenge.clubId is a plain column rather than a
+  // relation, so the club names come back in a second, tiny query.
+  // `in: []` simply matches nothing, so there is no empty-list branch to
+  // keep in step — and no union of array types for the renderer to trip on.
+  const clubIds = memberships.map((m) => m.clubId);
+  const [openSeeks, clubs] = await Promise.all([
+    prisma.challenge.findMany({
+      where: {
+        toId: null,
+        status: "pending",
+        clubId: { in: clubIds },
+        fromId: { not: userId },
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      include: { from: { include: { profile: true } } },
+      orderBy: { createdAt: "desc" },
+      take: 30,
+    }),
+    prisma.club.findMany({ where: { id: { in: clubIds } }, select: { id: true, name: true } }),
+  ]);
+  const clubName = new Map(clubs.map((c) => [c.id, c.name]));
 
   const byCategory = Object.fromEntries(ratings.map((r) => [r.category, r]));
   const yourMove = activeGames.filter(
@@ -238,6 +261,53 @@ export default async function ChallengesPage() {
         <PlayPanel />
       </section>
 
+      {/* 4 — The club board: games going spare, right now. */}
+      {openSeeks.length > 0 && (
+        <section>
+          <SectionHeader count={openSeeks.length}>Open in your club</SectionHeader>
+          <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+            {openSeeks.map((c, i) => {
+              const clock = clockOf(c.timeControl);
+              const mins = c.expiresAt
+                ? Math.max(0, Math.round((c.expiresAt.getTime() - Date.now()) / 60_000))
+                : null;
+              return (
+                <div
+                  key={c.id}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "var(--s3)",
+                    padding: "var(--s3) var(--s4)", minHeight: 68,
+                    borderTop: i === 0 ? "none" : "1px solid var(--border)",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <PlayerIdentity
+                      name={c.from.profile?.fullName ?? "A player"}
+                      handle={c.from.profile?.handle}
+                      country={c.from.profile?.country}
+                      title={c.from.profile?.title}
+                      size="sm"
+                      meta={
+                        <>
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                            <Icon name={SPEED_ICON[clock.category] ?? "timer"} size={13} />
+                            <span className="digits">{clock.text}</span>
+                          </span>
+                          <span>{c.rated ? "rated" : "casual"}</span>
+                          {c.clubId && clubName.get(c.clubId) && <span>{clubName.get(c.clubId)}</span>}
+                          {mins !== null && <span className="digits">{mins}m left</span>}
+                        </>
+                      }
+                    />
+                  </div>
+                  <ChallengeActions challengeId={c.id} seek />
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {/* 5 — Sent, low emphasis. */}
       {outgoing.length > 0 && (
         <section>
@@ -245,7 +315,9 @@ export default async function ChallengesPage() {
           <div className="card" style={{ padding: 0, overflow: "hidden" }}>
             {outgoing.map((c, i) => {
               const clock = clockOf(c.timeControl);
-              const left = minutesLeft(c.createdAt);
+              const left = c.expiresAt
+                ? Math.max(0, Math.round((c.expiresAt.getTime() - Date.now()) / 60_000))
+                : minutesLeft(c.createdAt);
               return (
                 <div
                   key={c.id}

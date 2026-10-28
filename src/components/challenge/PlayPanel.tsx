@@ -127,6 +127,28 @@ export function PlayPanel() {
     }
   }
 
+  /** Put a seek on the club board instead of naming an opponent. */
+  async function postSeek() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/challenges", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timeControl: presetId, color: colour, rated }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.duplicate) show("That seek is already on the board.");
+      else if (res.ok) show("Posted to your club. Anyone can take it.");
+      else if (data.error === "no_club") show("Join a club to post an open seek.", "bad");
+      else show("Could not post that seek.", "bad");
+      router.refresh();
+    } catch {
+      show("Could not reach the server.", "bad");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const action = (primary: boolean) => ({
     flex: 1, minHeight: 48, borderRadius: "var(--r-md)",
     display: "flex", alignItems: "center", justifyContent: "center", gap: "var(--s2)",
@@ -177,8 +199,14 @@ export function PlayPanel() {
         </button>
       </div>
 
+      <button onClick={postSeek} disabled={busy} className="press" style={{ ...action(false), minHeight: 44 }}>
+        <Icon name="inbox" size={18} />
+        Post to club board
+      </button>
+
       <p className="t-caption" style={{ color: "var(--text-dim)" }}>
         Quick play finds the club member closest to your {category.toLowerCase()} rating.
+        A posted seek waits 20 minutes for anyone in your club to take it.
       </p>
 
       <OpponentSheet open={sheet} onClose={() => setSheet(false)} category={category} onPick={challenge} />
