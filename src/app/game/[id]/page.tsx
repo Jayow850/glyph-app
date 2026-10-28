@@ -82,6 +82,8 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
         timeControl={label(base, increment)}
         speedLabel={CATEGORY_LABEL[game.category]}
         incrementMs={game.incrementMs}
+        startedAt={game.createdAt.toISOString()}
+        updatedAt={game.updatedAt.toISOString()}
       />
     </>
   );

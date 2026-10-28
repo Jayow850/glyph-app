@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { RailMark, RAIL_LABEL, RAIL_COLOR, RAIL_ORDER } from "@/components/game/RailMarks";
 
 interface Msg {
   id: string;
@@ -18,7 +19,14 @@ interface Msg {
  */
 const OPENERS = ["Good luck!", "Have fun!", "You too!", "Let's go"];
 const CLOSERS = ["Good game", "Well played", "Thanks!", "Rematch?"];
-const REACTIONS = ["👍", "😅", "😮", "🫡", "🔥", "♟"];
+/**
+ * Reactions are the chess marks used everywhere else in GLYPH, not
+ * emoji. One reaction language app-wide, and no glyph that renders as
+ * a different picture on each platform.
+ */
+const REACTION_TEXT: Record<string, string> = {
+  BRILLIANT: "!!", NICE: "!", BLUNDER: "??", RESPECT: "♟",
+};
 
 export function GameChat({
   gameId,
@@ -34,6 +42,21 @@ export function GameChat({
   const [messages, setMessages] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [muted, setMuted] = useState(false);
+
+  // Per device, per game. Chat is where chess apps grow their
+  // toxicity, and the cheapest effective answer is letting someone
+  // stop hearing from one opponent without leaving the board.
+  const muteKey = `glyph-mute-${gameId}`;
+  useEffect(() => {
+    try { setMuted(localStorage.getItem(muteKey) === "1"); } catch { /* blocked */ }
+  }, [muteKey]);
+
+  function toggleMute() {
+    const next = !muted;
+    setMuted(next);
+    try { localStorage.setItem(muteKey, next ? "1" : "0"); } catch { /* blocked */ }
+  }
   const scroller = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -94,7 +117,28 @@ export function GameChat({
 
   return (
     <section className="card" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-      <p className="section-label" style={{ padding: "14px 18px 8px" }}>Chat</p>
+      <div style={{ display: "flex", alignItems: "center", padding: "14px 18px 8px" }}>
+        <p className="section-label" style={{ flex: 1 }}>Chat</p>
+        {canWrite && (
+          <button
+            onClick={toggleMute}
+            className="press"
+            style={{
+              background: "none", border: "none", cursor: "pointer", padding: 0,
+              fontSize: 12, fontWeight: 600,
+              color: muted ? "var(--gold)" : "var(--text-dim)",
+            }}
+          >
+            {muted ? "Muted — unmute" : "Mute opponent"}
+          </button>
+        )}
+      </div>
+
+      {muted && (
+        <p className="t-caption" style={{ padding: "0 18px 8px", color: "var(--text-muted)" }}>
+          Their messages are hidden on this device. They are not told.
+        </p>
+      )}
 
       <div
         ref={scroller}
@@ -113,7 +157,7 @@ export function GameChat({
             {canWrite ? "Say good luck." : "Nothing said yet."}
           </p>
         ) : (
-          messages.map((m) => {
+          messages.filter((m) => !muted || m.userId === youId).map((m) => {
             const mine = m.userId === youId;
             return (
               <div key={m.id} style={{ display: "flex", justifyContent: mine ? "flex-end" : "flex-start" }}>
@@ -154,19 +198,22 @@ export function GameChat({
                 {q}
               </button>
             ))}
-            {REACTIONS.map((r) => (
+            {RAIL_ORDER.map((k) => (
               <button
-                key={r}
-                onClick={() => send(r, "QUICK")}
+                key={k}
+                onClick={() => send(REACTION_TEXT[k], "QUICK")}
                 disabled={sending}
-                aria-label={`Send ${r}`}
+                aria-label={`Send ${RAIL_LABEL[k]}`}
+                title={RAIL_LABEL[k]}
+                className="press"
                 style={{
-                  background: "var(--surface-2)", border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: 999, width: 30, height: 30, fontSize: 15,
-                  cursor: "pointer", lineHeight: 1,
+                  background: "var(--surface-2)", border: "1px solid var(--border)",
+                  borderRadius: "var(--r-full)", width: 30, height: 30,
+                  display: "grid", placeItems: "center",
+                  color: RAIL_COLOR[k], cursor: "pointer",
                 }}
               >
-                {r}
+                <RailMark kind={k} size={15} />
               </button>
             ))}
           </div>

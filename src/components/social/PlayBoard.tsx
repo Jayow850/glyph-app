@@ -19,6 +19,7 @@ export function PlayBoard({
   checkSquare = null,
   disabled = false,
   bare = false,
+  onBrowse,
 }: {
   frame: string[];                 // 8 rank-strings, rank 8 first
   selected: number | null;         // 0–63 grid index (always white's orientation)
@@ -33,6 +34,17 @@ export function PlayBoard({
   disabled?: boolean;
   /** Drop the frame entirely so the board can run edge to edge. */
   bare?: boolean;
+  /**
+   * Step through the game by swiping across the board: -1 back, +1 on.
+   *
+   * Only wired up while `disabled`, which is the point. When it is your
+   * move a horizontal drag means "carry this piece", and a gesture that
+   * sometimes moves a piece and sometimes rewinds the game is worse
+   * than no gesture. When you cannot move — the opponent's turn, a
+   * finished game, a spectator — the board has nothing else to do with
+   * a swipe.
+   */
+  onBrowse?: (direction: -1 | 1) => void;
 }) {
   // One flat board, indexed the same way regardless of which side is
   // looking at it. Flipping is purely a rendering concern: square 0 is
@@ -49,6 +61,7 @@ export function PlayBoard({
   // mouse, a finger and a stylus.
   const [drag, setDrag] = useState<{ from: number; x: number; y: number; size: number } | null>(null);
   const [hover, setHover] = useState<number | null>(null);
+  const swipeRef = useRef<{ x: number; y: number } | null>(null);
 
   /** The absolute square under a viewport point, or null if off the board. */
   const squareAtPoint = useCallback((clientX: number, clientY: number): number | null => {
@@ -103,6 +116,23 @@ export function PlayBoard({
     // stays selected and nothing is sent. A board behaves the same way.
   }
 
+  const SWIPE_MIN = 44;
+
+  function swipeStart(e: ReactPointerEvent<HTMLDivElement>) {
+    swipeRef.current = disabled && onBrowse ? { x: e.clientX, y: e.clientY } : null;
+  }
+
+  function swipeEnd(e: ReactPointerEvent<HTMLDivElement>) {
+    const from = swipeRef.current;
+    swipeRef.current = null;
+    if (!from || !onBrowse) return;
+    const dx = e.clientX - from.x;
+    const dy = e.clientY - from.y;
+    // Horizontal, and decisively so — a diagonal drag is an accident.
+    if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    onBrowse(dx < 0 ? 1 : -1);   // drag the board left to go forward
+  }
+
   function handleClick(idx: number) {
     if (suppressClick.current) { suppressClick.current = false; return; }
     onSquare(idx);
@@ -128,6 +158,9 @@ export function PlayBoard({
     >
       <div
         ref={gridRef}
+        onPointerDown={swipeStart}
+        onPointerUp={swipeEnd}
+        onPointerCancel={() => { swipeRef.current = null; }}
         style={{
           width: "100%",
           aspectRatio: "1 / 1",

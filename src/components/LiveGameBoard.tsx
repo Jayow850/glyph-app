@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef, useCallback, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Engine } from "@engine/game/engine";
+import { Engine, positionAtPly, movePairs as pairsOf, sharePlayerLed } from "@engine/game/engine";
 import { PlayBoard } from "@/components/social/PlayBoard";
 import { Piece, PieceMark } from "@/components/social/Pieces";
 import { BoardThemePicker } from "@/components/social/BoardThemePicker";
@@ -13,6 +13,7 @@ import { Icon, type IconName } from "@/components/ui/Icon";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { PlayerIdentity } from "@/components/ui/PlayerIdentity";
 import { GameOverSheet } from "@/components/game/GameOverSheet";
+import { Rail } from "@/components/game/Rail";
 import { playForSan, playEnd, playMove, playLowTime, isMuted, setMuted } from "@/lib/sound";
 
 const gridToX88 = (i: number) => (7 - Math.floor(i / 8)) * 16 + (i % 8);
@@ -52,19 +53,6 @@ function changedSquares(prev: string[], next: string[]): number[] {
   const out: number[] = [];
   for (let i = 0; i < 64; i++) if (a[i] !== b[i]) out.push(i);
   return out.length > 4 ? [] : out;
-}
-
-/** Replay the game to a given ply so any earlier position can be shown. */
-function positionAtPly(sans: string[], ply: number): { fen: string; move: number[] } {
-  const e = new Engine();
-  let touched: number[] = [];
-  for (let i = 0; i < ply && i < sans.length; i++) {
-    const m = e.legalMoves().find((x) => x.san === sans[i]);
-    if (!m) break;
-    touched = [x88ToGrid(m.from), x88ToGrid(m.to)];
-    e.move(m.from, m.to, m.promotion);
-  }
-  return { fen: e.fen(), move: touched };
 }
 
 function buildPgn(sans: string[], white: string, black: string, result: string) {
@@ -191,9 +179,11 @@ function PlayerBar({
 
 function ActionButton({
   icon, label, onClick, tone = "normal", disabled = false, wide = false,
+  badge = 0, bounce = false,
 }: {
   icon: IconName; label: string; onClick: () => void;
   tone?: "normal" | "danger"; disabled?: boolean; wide?: boolean;
+  badge?: number; bounce?: boolean;
 }) {
   return (
     <button
@@ -209,7 +199,22 @@ function ActionButton({
         opacity: disabled ? 0.45 : 1,
       }}
     >
-      <Icon name={icon} size={20} />
+      <span className={bounce ? "chat-bounce" : undefined} style={{ position: "relative", display: "block" }}>
+        <Icon name={icon} size={20} />
+        {badge > 0 && (
+          <span
+            className="digits"
+            style={{
+              position: "absolute", top: -4, right: -8, minWidth: 15, height: 15,
+              padding: "0 4px", borderRadius: "var(--r-full)", lineHeight: "15px",
+              background: "var(--gold)", color: "var(--gold-ink)",
+              fontSize: 9, fontWeight: 700, textAlign: "center",
+            }}
+          >
+            {badge > 9 ? "9+" : badge}
+          </span>
+        )}
+      </span>
       <span style={{ fontSize: 10, fontWeight: 600 }}>{label}</span>
     </button>
   );
@@ -220,6 +225,7 @@ interface ServerState {
   endReason?: string | null; whiteMs: number; blackMs: number;
   ticking?: boolean; drawOfferBy?: "w" | "b" | null;
   whiteRatingDelta?: number | null; blackRatingDelta?: number | null;
+  chat?: { id: string; userId: string; name: string; body: string; kind: string; at: number } | null;
 }
 
 export function LiveGameBoard({
@@ -228,6 +234,7 @@ export function LiveGameBoard({
   status: initialStatus, result: initialResult, endReason: initialEndReason,
   initialWhiteMs, initialBlackMs, initialDrawOfferBy, initialTicking,
   initialWhiteDelta, initialBlackDelta, rated, timeControl, speedLabel, incrementMs,
+  startedAt, updatedAt,
 }: {
   gameId: string; youId: string | null; initialFen: string; initialSans: string[];
   youAre: "w" | "b" | null; whiteName: string; blackName: string;
@@ -240,6 +247,7 @@ export function LiveGameBoard({
   initialTicking: boolean;
   initialWhiteDelta: number | null; initialBlackDelta: number | null;
   rated: boolean; timeControl: string; speedLabel: string; incrementMs: number;
+  startedAt: string; updatedAt: string;
 }) {
   const [fen, setFen] = useState(initialFen);
   const [sans, setSans] = useState<string[]>(initialSans);
@@ -269,6 +277,25 @@ export function LiveGameBoard({
   const [soundOff, setSoundOff] = useState(false);
   const [previewPly, setPreviewPly] = useState<number | null>(null);
   const [promo, setPromo] = useState<{ from: number; to: number } | null>(null);
+  const [railMuted, setRailMuted] = useState(false);
+  const [reveal, setReveal] = useState(0);
+  const [railCount, setRailCount] = useState(0);
+
+  // The last message, shown for a moment above the action bar, and
+  // then counted on the icon. A player in time trouble must be able to
+  // read it without leaving the board and without losing a tap.
+  const [whisperStrip, setWhisperStrip] = useState<{ id: string; name: string; body: string } | null>(null);
+  const [unread, setUnread] = useState(0);
+  const [bounce, setBounce] = useState(false);
+  const lastChatId = useRef<string | null>(null);
+  const chatOpenRef = useRef(false);
+
+  // A game that ends while you are watching earns a beat. A game you
+  // open after it finished does not — there is nothing to witness, so
+  // it starts at the end of the sequence.
+  const [endPhase, setEndPhase] = useState<"none" | "hold" | "band" | "sheet">(
+    initialStatus === "ACTIVE" ? "none" : "sheet",
+  );
 
   const router = useRouter();
   const prevFrameRef = useRef<string[]>(frameFromFen(initialFen));
@@ -277,6 +304,24 @@ export function LiveGameBoard({
   const stripRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setSoundOff(isMuted()), []);
+
+  // Counted once the game is over, which is the only time the thread
+  // is readable. `status` rather than the `live` derived below, because
+  // this effect sits above it.
+  useEffect(() => {
+    if (status === "ACTIVE") return;
+    fetch(`/api/games/${gameId}/whisper`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && !d.sealed && setRailCount((d.whispers ?? []).length))
+      .catch(() => {});
+  }, [status, gameId]);
+
+  useEffect(() => {
+    fetch("/api/me/preferences", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p) => p && setRailMuted(Boolean(p.railMuted)))
+      .catch(() => {});
+  }, []);
 
   const live = status === "ACTIVE";
   const reviewing = previewPly !== null;
@@ -310,10 +355,18 @@ export function LiveGameBoard({
     if (touched.length) setLastMove(touched);
     prevFrameRef.current = nextFrame;
 
-    if (data.sans.length > moveCountRef.current) playForSan(data.sans[data.sans.length - 1] ?? "");
+    if (data.sans.length > moveCountRef.current) {
+      playForSan(data.sans[data.sans.length - 1] ?? "");
+      // Your opponent moved. Whatever you were looking at, the game is
+      // the thing that matters now — being stuck in the past with a
+      // clock running is how people lose on time.
+      setPreviewPly(null);
+    }
     moveCountRef.current = data.sans.length;
 
     if (data.status !== "ACTIVE" && statusRef.current === "ACTIVE") {
+      setPreviewPly(null);
+      setEndPhase("hold");
       const won =
         data.result === "1/2-1/2" || youAre === null ? null
         : (youAre === "w" && data.result === "1-0") || (youAre === "b" && data.result === "0-1");
@@ -332,7 +385,31 @@ export function LiveGameBoard({
     setDrawOfferBy(data.drawOfferBy ?? null);
     if (data.whiteRatingDelta !== undefined) setWhiteDelta(data.whiteRatingDelta);
     if (data.blackRatingDelta !== undefined) setBlackDelta(data.blackRatingDelta);
-  }, [youAre]);
+
+    const msg = data.chat;
+    if (msg && msg.id !== lastChatId.current) {
+      const firstLoad = lastChatId.current === null;
+      lastChatId.current = msg.id;
+      // Your own message is not news, and neither is the backlog you
+      // already had open when you arrived.
+      if (!firstLoad && msg.userId !== youId && !chatOpenRef.current) {
+        setWhisperStrip({ id: msg.id, name: msg.name, body: msg.body });
+        setUnread((n) => n + 1);
+        setBounce(true);
+      }
+    }
+  }, [youAre, youId]);
+
+  useEffect(() => {
+    if (endPhase === "hold") {
+      const t = setTimeout(() => setEndPhase("band"), 800);
+      return () => clearTimeout(t);
+    }
+    if (endPhase === "band") {
+      const t = setTimeout(() => setEndPhase("sheet"), 760);
+      return () => clearTimeout(t);
+    }
+  }, [endPhase]);
 
   useEffect(() => {
     if (!live) return;
@@ -501,16 +578,29 @@ export function LiveGameBoard({
     increment: incrementMs,
   });
 
+  const drew = result === "1/2-1/2";
+  const youWonIt = youAre !== null && !drew &&
+    ((youAre === "w" && result === "1-0") || (youAre === "b" && result === "0-1"));
+  const bandTone = drew ? "draw" : youAre === null ? "" : youWonIt ? "" : "loss";
+  const bandText =
+    endReason === "aborted" ? "Aborted"
+    : endReason === "checkmate" ? "Checkmate"
+    : drew ? "Draw"
+    : youAre === null ? (result === "1-0" ? "White wins" : "Black wins")
+    : youWonIt ? "You won" : "You lost";
+
+  // One line of context the player actually wants, computed once.
+  const ledPercent = youAre === null ? null : sharePlayerLed(sans, youAre);
+  const seconds = Math.max(
+    0,
+    Math.round((new Date(updatedAt).getTime() - new Date(startedAt).getTime()) / 1000),
+  );
+
   const theirOffer = drawOfferBy !== null && youAre !== null && drawOfferBy !== youAre;
   const yourOffer = drawOfferBy !== null && drawOfferBy === youAre;
   const canAbort = live && youAre !== null && sans.length < 2;
 
-  const movePairs: { n: number; w?: string; b?: string }[] = [];
-  sans.forEach((san, i) => {
-    const n = Math.floor(i / 2);
-    if (!movePairs[n]) movePairs[n] = { n: n + 1 };
-    if (i % 2 === 0) movePairs[n].w = san; else movePairs[n].b = san;
-  });
+  const movePairs = pairsOf(sans);
 
   const atPly = previewPly ?? sans.length;
   const stepTo = (ply: number) => {
@@ -518,6 +608,47 @@ export function LiveGameBoard({
     setPreviewPly(clamped >= sans.length ? null : clamped);
     setSelected(null);
   };
+
+  useEffect(() => {
+    if (!whisperStrip) return;
+    const t = setTimeout(() => setWhisperStrip(null), 4200);
+    return () => clearTimeout(t);
+  }, [whisperStrip]);
+
+  useEffect(() => {
+    if (!bounce) return;
+    const t = setTimeout(() => setBounce(false), 520);
+    return () => clearTimeout(t);
+  }, [bounce]);
+
+  useEffect(() => {
+    chatOpenRef.current = sheet === "chat";
+    if (sheet === "chat") { setUnread(0); setWhisperStrip(null); }
+  }, [sheet]);
+
+  const first = () => stepTo(0);
+  const last = () => stepTo(sans.length);
+
+  // Arrows and Home/End browse the game, the way every chess client
+  // since the 1990s has. Ignored while a chat field has focus, or
+  // typing "e" in a message would jump the board.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      const go =
+        e.key === "ArrowLeft" ? atPly - 1
+        : e.key === "ArrowRight" ? atPly + 1
+        : e.key === "Home" ? 0
+        : e.key === "End" ? sans.length
+        : null;
+      if (go === null) return;
+      e.preventDefault();
+      stepTo(go);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   const btn = (primary: boolean): CSSProperties => ({
     flex: 1, borderRadius: "var(--r-md)", padding: "11px 0", fontWeight: 600, fontSize: 14,
@@ -628,7 +759,14 @@ export function LiveGameBoard({
               checkSquare={checkSquare}
               coords={coordsOn}
               disabled={!myTurn}
+              onBrowse={(dir) => stepTo(atPly + dir)}
             />
+            {(endPhase === "band" || endPhase === "sheet") && (
+              <div className={`result-band ${bandTone}`}>
+                <span>{bandText}</span>
+              </div>
+            )}
+
             {promo && (
               <PromotionPicker
                 to={promo.to}
@@ -643,6 +781,15 @@ export function LiveGameBoard({
 
         <PlayerBar {...bar(!topIsWhite)} />
 
+        <Rail
+          gameId={gameId}
+          ply={sans.length}
+          whiteName={whiteName}
+          blackName={blackName}
+          finished={!live}
+          revealSignal={reveal}
+        />
+
         {reviewing && (
           <button
             onClick={() => stepTo(sans.length)}
@@ -654,7 +801,10 @@ export function LiveGameBoard({
               fontSize: 13, fontWeight: 700, letterSpacing: "0.04em",
             }}
           >
-            REVIEWING MOVE {atPly} — BACK TO LIVE
+<span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--gold)" }} />
+              MOVE {atPly} OF {sans.length} — RETURN TO GAME
+            </span>
           </button>
         )}
 
@@ -676,6 +826,19 @@ export function LiveGameBoard({
           <p style={{ flexShrink: 0, color: "var(--danger)", fontSize: 13, padding: "0 var(--s3) var(--s1)" }}>{error}</p>
         )}
 
+        {whisperStrip && (
+          <button
+            onClick={() => setSheet("chat")}
+            className="chat-strip press"
+            aria-live="polite"
+          >
+            <span style={{ fontWeight: 600, flexShrink: 0 }}>{whisperStrip.name}</span>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text-muted)" }}>
+              {whisperStrip.body}
+            </span>
+          </button>
+        )}
+
         <div
           className="game-actions"
           style={{
@@ -684,22 +847,25 @@ export function LiveGameBoard({
           }}
         >
           <ActionButton icon="list" label="Moves" onClick={() => setSheet("moves")} />
-          <ActionButton icon="chat" label="Chat" onClick={() => setSheet("chat")} />
+          <ActionButton
+            icon="chat"
+            label="Chat"
+            badge={unread}
+            bounce={bounce}
+            onClick={() => setSheet("chat")}
+          />
 
           <div style={{ flex: 1 }} />
 
-          {live && youAre && (
-            canAbort
-              ? <ActionButton icon="x" label="Abort" tone="danger" onClick={() => post("abort")} />
-              : <>
-                  <ActionButton icon="flag" label="Resign" tone="danger" onClick={() => setConfirmResign(true)} />
-                  <ActionButton icon="handshake" label={yourOffer ? "Offered" : "Draw"} onClick={() => post("draw", { action: "offer" })} />
-                </>
-          )}
           {!live && youAre && <ActionButton icon="swords" label="Rematch" onClick={rematch} />}
 
+          {/* Browsing the game is what this bar is for. Resign and draw
+              live in the header menu — they must not sit at the same
+              weight as the game itself. */}
+          <ActionButton icon="skipBack" label="Start" disabled={atPly === 0} onClick={first} />
           <ActionButton icon="chevronLeft" label="Prev" disabled={atPly === 0} onClick={() => stepTo(atPly - 1)} />
           <ActionButton icon="chevronRight" label="Next" disabled={atPly >= sans.length} onClick={() => stepTo(atPly + 1)} />
+          <ActionButton icon="skipForward" label="Live" disabled={atPly >= sans.length} onClick={last} />
         </div>
       </div>
 
@@ -755,6 +921,53 @@ export function LiveGameBoard({
           />
           <SettingRow label="Coordinates" on={coordsOn} onToggle={() => setCoordsOn((v) => !v)} />
           <SettingRow label="Flip board" on={flipped} onToggle={() => setFlipOverride(!flipped)} />
+          {youAre && (
+            <SettingRow
+              label="Mute the rail"
+              on={railMuted}
+              onToggle={() => {
+                const next = !railMuted;
+                setRailMuted(next);
+                fetch("/api/me/preferences", {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ railMuted: next }),
+                }).catch(() => {});
+              }}
+            />
+          )}
+
+          {live && youAre && (
+            <div>
+              <p className="section-label" style={{ marginBottom: "var(--s2)" }}>Game</p>
+              <div style={{ display: "flex", gap: "var(--s3)" }}>
+                {canAbort ? (
+                  <button onClick={() => { setSheet(null); post("abort"); }} disabled={busy} className="press" style={btn(false)}>
+                    Abort
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => { setSheet(null); setConfirmResign(true); }}
+                      disabled={busy}
+                      className="press"
+                      style={{ ...btn(false), color: "var(--danger)" }}
+                    >
+                      Resign
+                    </button>
+                    <button
+                      onClick={() => { setSheet(null); post("draw", { action: "offer" }); }}
+                      disabled={busy || yourOffer}
+                      className="press"
+                      style={btn(false)}
+                    >
+                      {yourOffer ? "Draw offered" : "Offer draw"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </Sheet>
 
@@ -779,7 +992,7 @@ export function LiveGameBoard({
       )}
 
       <GameOverSheet
-        open={!live && !resultDismissed}
+        open={endPhase === "sheet" && !live && !resultDismissed}
         onClose={() => setResultDismissed(true)}
         youAre={youAre}
         result={result}
@@ -790,8 +1003,19 @@ export function LiveGameBoard({
         blackRating={blackRating}
         whiteDelta={whiteDelta}
         blackDelta={blackDelta}
+        whiteCountry={whiteCountry}
+        blackCountry={blackCountry}
+        whiteTitle={whiteTitle}
+        blackTitle={blackTitle}
         rated={rated}
+        moves={Math.ceil(sans.length / 2)}
+        seconds={Number.isFinite(seconds) ? seconds : null}
+        ledPercent={ledPercent}
+        gameId={gameId}
+        onRevealRail={youAre ? () => { setResultDismissed(true); setReveal((n) => n + 1); } : undefined}
+        railCount={railCount}
         onRematch={rematch}
+        rematchState={rematchState}
         onShare={postGame}
         shared={posted || posting}
         busy={busy}

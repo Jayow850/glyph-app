@@ -12,7 +12,8 @@
     "socket": "node --experimental-strip-types src/lib/realtime/socket-server.ts",
     "test:engine": "node --experimental-strip-types lib/test-tournament.ts",
     "test:rating": "node --experimental-strip-types lib/test-rating.ts",
-    "test:board": "node --experimental-strip-types lib/test-board.ts"
+    "test:board": "node --experimental-strip-types lib/test-board.ts",
+    "test:replay": "node --experimental-strip-types lib/test-replay.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",

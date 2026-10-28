@@ -216,6 +216,9 @@ model User {
   bookmarkFolders BookmarkFolder[]
   streak         Streak?
   clubJoinRequests ClubJoinRequest[]
+  spectating     Spectator[]
+  railReactions  RailReaction[]
+  whispers       Whisper[]
 
   @@index([email])
 }
@@ -242,6 +245,8 @@ model Profile {
   boardTheme    String       @default("midnight")
   pieceSet      String       @default("classic")
   lastSeenAt    DateTime?
+  /** Hide the rail's reactions while you are playing. */
+  railMuted     Boolean      @default(false)
   updatedAt     DateTime     @updatedAt
 
   @@index([handle])
@@ -529,6 +534,9 @@ model LiveGame {
   takebackBy   String?
   disconnectAt DateTime?
   messages    GameMessage[]
+  spectators  Spectator[]
+  railReacts  RailReaction[]
+  whispers    Whisper[]
   match       Match?
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
@@ -918,4 +926,69 @@ model GlyphRatingHistory {
   createdAt      DateTime    @default(now())
 
   @@index([glyphRatingId, createdAt])
+}
+
+
+// ============================================================
+// THE RAIL — the people standing around the board.
+//
+// In a club the game is never private: members drift over, watch,
+// wince and argue about the position. These three tables are that,
+// made real, with one hard constraint running through all of them —
+// a spectator must never be able to help a player.
+// ============================================================
+
+model Spectator {
+  id         String   @id @default(cuid())
+  liveGameId String
+  liveGame   LiveGame @relation(fields: [liveGameId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /** "w", "b" or null — who they are backing, which is pure tribalism. */
+  backing    String?
+  joinedAt   DateTime @default(now())
+  /** Watching is a heartbeat, not a session: stale rows simply age out. */
+  lastSeenAt DateTime @default(now())
+
+  @@unique([liveGameId, userId])
+  @@index([liveGameId, lastSeenAt])
+}
+
+enum RailReactionKind {
+  BRILLIANT
+  BLUNDER
+  NICE
+  RESPECT
+}
+
+model RailReaction {
+  id         String           @id @default(cuid())
+  liveGameId String
+  liveGame   LiveGame         @relation(fields: [liveGameId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       RailReactionKind
+  /** The half-move it was aimed at, so a recap can line them up. */
+  ply        Int              @default(0)
+  createdAt  DateTime         @default(now())
+  /**
+   * When players may see it. Written a few seconds into the future on
+   * purpose: an instant "blunder!" from the rail is a hint, and a hint
+   * is cheating. The delay keeps the warmth and removes the signal.
+   */
+  showAt     DateTime
+
+  @@index([liveGameId, showAt])
+}
+
+model Whisper {
+  id         String   @id @default(cuid())
+  liveGameId String
+  liveGame   LiveGame @relation(fields: [liveGameId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  body       String
+  createdAt  DateTime @default(now())
+
+  @@index([liveGameId, createdAt])
 }

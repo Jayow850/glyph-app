@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
-import { ChallengeWatcher } from "@/components/ChallengeWatcher";
+import { NotifyLayer } from "@/components/notify/NotifyLayer";
 import { BottomNav, SideRail } from "@/components/nav/Nav";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { THEME_SCRIPT } from "@/lib/theme";
@@ -110,8 +110,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           </div>
         </header>
 
-        {/* Challenges can arrive while you are anywhere in the app. */}
-        {signedIn && <ChallengeWatcher />}
+        {/* Anything that needs to interrupt you, anywhere in the app,
+            renders here — below the header, never over it. */}
+        {signedIn && <NotifyLayer />}
 
         <div className="layout">
           <SideRail />

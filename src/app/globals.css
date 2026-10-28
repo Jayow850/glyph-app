@@ -323,6 +323,141 @@ button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   .board-fit.yours { box-shadow: 0 0 0 2px var(--gold), 0 22px 60px rgba(0,0,0,0.55); }
 }
 
+/* A message arriving mid-game: one line above the action bar for a
+   few seconds, then it becomes a count on the icon. It must never
+   cover the board, never block a tap, and never steal focus while a
+   clock is running — so it is a sibling of the board, not an overlay. */
+.chat-strip {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  min-height: 34px;
+  flex-shrink: 0;
+  padding: var(--s1) var(--s3);
+  border: none;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: var(--t-caption);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  animation: chat-slide 220ms var(--ease) both;
+}
+@keyframes chat-slide {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes chat-bounce {
+  0%, 100% { transform: translateY(0); }
+  35%      { transform: translateY(-5px); }
+  70%      { transform: translateY(-1px); }
+}
+.chat-bounce { animation: chat-bounce 500ms var(--ease); }
+
+/* ---------- the rail ----------
+   The band under the board. It is never allowed to collapse to nothing:
+   a dead black strip under a chess board is what tells you this is
+   software rather than a room. */
+.rail-strip {
+  position: relative;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.rail-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 46px;
+  padding: 0 var(--s3);
+}
+
+/* Reactions rise out of the rail and across the board edge, which is
+   why this overflows upward rather than clipping. */
+.rail-floats {
+  position: absolute;
+  left: 0; right: 0; bottom: 100%;
+  height: 140px;
+  pointer-events: none;
+  overflow: hidden;
+}
+.rail-float {
+  position: absolute;
+  bottom: 0;
+  animation: rail-rise 2400ms var(--ease) both;
+}
+@keyframes rail-rise {
+  0%   { transform: translateY(10px) scale(0.7); opacity: 0; }
+  14%  { transform: translateY(0) scale(1.1); opacity: 1; }
+  30%  { transform: translateY(-16px) scale(1); opacity: 1; }
+  100% { transform: translateY(-120px) scale(0.92); opacity: 0; }
+}
+
+@media (min-width: 1100px) {
+  .rail-strip { border: 1px solid var(--border); border-radius: var(--r-lg); }
+}
+
+/* Notifications sit BELOW the header, never over it. The old challenge
+   card was pinned to the viewport top and clipped the wordmark. In a
+   game the header is gone, so the layer moves up to the safe area —
+   and renders as a slim banner that cannot cover the board. */
+.notify-layer {
+  position: fixed;
+  top: calc(56px + env(safe-area-inset-top, 0px) + var(--s2));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(430px, calc(100vw - 2 * var(--s4)));
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  pointer-events: none;
+}
+.notify-layer > * { pointer-events: auto; }
+
+body:has(.ingame) .notify-layer {
+  top: calc(env(safe-area-inset-top, 0px) + var(--s1));
+}
+
+@keyframes notify-drain {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+/* The end of a game gets a beat of its own: the board holds, this band
+   sweeps across it, and only then does the result sheet rise. A sheet
+   that arrives over a half-rendered board throws the moment away. */
+@keyframes band-sweep {
+  from { transform: translateX(-101%); }
+  to   { transform: translateX(0); }
+}
+.result-band {
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  transform: translateY(-50%);
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+.result-band > span {
+  display: block;
+  padding: var(--s3) var(--s4);
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-align: center;
+  animation: band-sweep 460ms var(--ease) both;
+}
+.result-band.draw > span { background: var(--draw); color: var(--bg); }
+.result-band.loss > span { background: var(--danger-solid); color: #FFEFEF; }
+
 @keyframes clock-urgent {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.72; }

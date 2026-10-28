@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { subscribeWaiting } from "@/lib/notify";
 
 /**
  * Line icons, drawn here rather than pulled from a package.
@@ -64,6 +66,20 @@ const RAIL: Item[] = [
   { href: "/profile", icon: "profile", label: "Profile" },
 ];
 
+/**
+ * How many challenges are sitting unanswered.
+ *
+ * A toast that times out must not take the challenge with it — it is
+ * still pending, and this badge is what says so. The notification
+ * layer already polls for them, so the nav listens rather than running
+ * a second poll of its own.
+ */
+function useWaiting() {
+  const [n, setN] = useState(0);
+  useEffect(() => subscribeWaiting(setN), []);
+  return n;
+}
+
 function useActive() {
   const pathname = usePathname() ?? "";
   return (href: string) => pathname === href || pathname.startsWith(`${href}/`);
@@ -71,6 +87,7 @@ function useActive() {
 
 export function BottomNav() {
   const isActive = useActive();
+  const waiting = useWaiting();
 
   return (
     <nav
@@ -94,7 +111,12 @@ export function BottomNav() {
         }}
       >
         {PRIMARY.slice(0, 2).map((n) => (
-          <NavTab key={n.href} item={n} active={isActive(n.href)} />
+          <NavTab
+            key={n.href}
+            item={n}
+            active={isActive(n.href)}
+            badge={n.href === "/challenges" ? waiting : 0}
+          />
         ))}
 
         <Link
@@ -120,11 +142,12 @@ export function BottomNav() {
   );
 }
 
-function NavTab({ item, active }: { item: Item; active: boolean }) {
+function NavTab({ item, active, badge = 0 }: { item: Item; active: boolean; badge?: number }) {
   return (
     <Link
       href={item.href}
       aria-current={active ? "page" : undefined}
+      aria-label={badge > 0 ? `${item.label}, ${badge} waiting` : undefined}
       className="press tap"
       style={{
         display: "flex", flexDirection: "column", alignItems: "center",
@@ -133,7 +156,22 @@ function NavTab({ item, active }: { item: Item; active: boolean }) {
         transition: "color 160ms var(--ease)",
       }}
     >
-      <Icon name={item.icon} size={21} />
+      <span style={{ position: "relative", display: "block" }}>
+        <Icon name={item.icon} size={21} />
+        {badge > 0 && (
+          <span
+            className="digits"
+            style={{
+              position: "absolute", top: -5, right: -9, minWidth: 16, height: 16,
+              padding: "0 4px", borderRadius: "var(--r-full)",
+              background: "var(--gold)", color: "var(--gold-ink)",
+              fontSize: 10, fontWeight: 700, lineHeight: "16px", textAlign: "center",
+            }}
+          >
+            {badge > 9 ? "9+" : badge}
+          </span>
+        )}
+      </span>
       <span style={{ fontSize: 11, fontWeight: active ? 600 : 500, letterSpacing: "0.01em" }}>
         {item.label}
       </span>
@@ -143,6 +181,7 @@ function NavTab({ item, active }: { item: Item; active: boolean }) {
 
 export function SideRail() {
   const isActive = useActive();
+  const waiting = useWaiting();
 
   return (
     <aside className="rail" style={{ paddingTop: "var(--s4)" }}>
@@ -168,6 +207,19 @@ export function SideRail() {
             >
               <Icon name={n.icon} size={20} />
               {n.label}
+              {n.href === "/challenges" && waiting > 0 && (
+                <span
+                  className="digits"
+                  style={{
+                    marginLeft: "auto", minWidth: 20, padding: "1px 6px",
+                    borderRadius: "var(--r-full)", textAlign: "center",
+                    background: "var(--gold)", color: "var(--gold-ink)",
+                    fontSize: 11, fontWeight: 700,
+                  }}
+                >
+                  {waiting > 9 ? "9+" : waiting}
+                </span>
+              )}
             </Link>
           );
         })}

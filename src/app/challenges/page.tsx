@@ -132,6 +132,36 @@ export default async function ChallengesPage() {
   ]);
   const clubName = new Map(clubs.map((c) => [c.id, c.name]));
 
+  // Games you are not in, being played by people you share a club with.
+  // A club where you can only play your own games is a matchmaker, not
+  // a club — this is the door to someone else's board.
+  const memberIds = clubIds.length
+    ? (await prisma.membership.findMany({
+        where: { clubId: { in: clubIds }, active: true },
+        select: { userId: true },
+      })).map((m) => m.userId)
+    : [];
+
+  const [clubGames, watchCounts] = await Promise.all([
+    prisma.liveGame.findMany({
+      where: {
+        status: "ACTIVE",
+        whiteId: { in: memberIds },
+        blackId: { in: memberIds },
+        NOT: { OR: [{ whiteId: userId }, { blackId: userId }] },
+      },
+      include: { white: { include: { profile: true } }, black: { include: { profile: true } } },
+      orderBy: { lastMoveAt: "desc" },
+      take: 8,
+    }),
+    prisma.spectator.groupBy({
+      by: ["liveGameId"],
+      where: { lastSeenAt: { gte: new Date(Date.now() - 25_000) } },
+      _count: { _all: true },
+    }),
+  ]);
+  const watching = new Map(watchCounts.map((w) => [w.liveGameId, w._count._all]));
+
   const byCategory = Object.fromEntries(ratings.map((r) => [r.category, r]));
   const yourMove = activeGames.filter(
     (g) => sideToMove(g.fen) === (g.whiteId === userId ? "w" : "b"),
@@ -260,6 +290,48 @@ export default async function ChallengesPage() {
         <SectionHeader>Play</SectionHeader>
         <PlayPanel />
       </section>
+
+      {/* 3b — Somebody else's game, which you may walk over and watch. */}
+      {clubGames.length > 0 && (
+        <section>
+          <SectionHeader count={clubGames.length}>Being played now</SectionHeader>
+          <div
+            style={{
+              display: "flex", gap: "var(--s3)", overflowX: "auto", paddingBottom: 2,
+              marginLeft: "calc(-1 * var(--s4))", marginRight: "calc(-1 * var(--s4))",
+              paddingLeft: "var(--s4)", paddingRight: "var(--s4)", scrollbarWidth: "none",
+            }}
+          >
+            {clubGames.map((g) => {
+              const seats = watching.get(g.id) ?? 0;
+              const clock = clockOf(g.timeControl);
+              return (
+                <Link
+                  key={g.id}
+                  href={`/game/${g.id}`}
+                  style={{
+                    flex: "0 0 auto", width: 210, textDecoration: "none", color: "inherit",
+                    background: "var(--surface)", border: "1px solid var(--border)",
+                    borderRadius: "var(--r-lg)", padding: "var(--s3)",
+                    display: "flex", flexDirection: "column", gap: "var(--s1)",
+                  }}
+                >
+                  <p style={{ fontSize: "var(--t-secondary)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {g.white.profile?.fullName ?? "White"} vs {g.black.profile?.fullName ?? "Black"}
+                  </p>
+                  <p className="t-caption digits" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 5 }}>
+                    <Icon name={SPEED_ICON[clock.category] ?? "timer"} size={12} />
+                    {clock.text} · move {Math.ceil(g.sans.length / 2)}
+                  </p>
+                  <p className="t-caption digits" style={{ color: seats > 0 ? "var(--gold)" : "var(--text-dim)" }}>
+                    {seats > 0 ? `${seats} watching` : "Be the first to watch"}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* 4 — The club board: games going spare, right now. */}
       {openSeeks.length > 0 && (

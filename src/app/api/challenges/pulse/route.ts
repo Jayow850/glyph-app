@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { parseId, label, classify, CATEGORY_LABEL } from "@engine/game/timeControls";
+import { displayRating } from "@/lib/services/ratings";
 
 /**
  * The heartbeat behind challenge notifications.
@@ -28,6 +29,13 @@ export async function GET() {
 
   const now = Date.now();
 
+  // Being here counts as being online. Guarded on staleness so a poll
+  // every three seconds does not mean a write every three seconds.
+  void prisma.profile.updateMany({
+    where: { userId, OR: [{ lastSeenAt: null }, { lastSeenAt: { lt: new Date(now - 60_000) } }] },
+    data: { lastSeenAt: new Date(now) },
+  }).catch(() => {});
+
   const [incoming, accepted] = await Promise.all([
     prisma.challenge.findMany({
       where: {
@@ -35,7 +43,7 @@ export async function GET() {
         status: "pending",
         createdAt: { gte: new Date(now - FRESH_MS) },
       },
-      include: { from: { include: { profile: true } } },
+      include: { from: { include: { profile: true, glyphRatings: true } } },
       orderBy: { createdAt: "desc" },
       take: 5,
     }),
@@ -54,14 +62,22 @@ export async function GET() {
   return NextResponse.json({
     incoming: incoming.map((c) => {
       const { base, increment } = parseId(c.timeControl);
+      // How long the toast may live: whatever is left of the challenge.
+      const deadline = (c.expiresAt ?? new Date(c.createdAt.getTime() + FRESH_MS)).getTime();
       return {
         id: c.id,
         name: c.from.profile?.fullName ?? "A player",
         handle: c.from.profile?.handle ?? "",
+        country: c.from.profile?.country ?? null,
+        title: c.from.profile?.title ?? null,
+        rating: displayRating(
+          c.from.glyphRatings.find((r) => r.category === classify(base, increment)),
+        ),
         clock: label(base, increment),
         speed: CATEGORY_LABEL[classify(base, increment)],
         rated: c.rated,
         message: c.message,
+        secondsLeft: Math.max(0, Math.round((deadline - now) / 1000)),
       };
     }),
     started: accepted.map((c) => ({ challengeId: c.id, gameId: c.liveGameId as string })),

@@ -29,6 +29,10 @@ const sqName = (i: number) => "abcdefgh"[i & 7] + String((i >> 4) + 1);
 export const parseSquare = (s: string) => (parseInt(s[1]) - 1) * 16 + "abcdefgh".indexOf(s[0]);
 const isWhite = (p: string) => p >= "A" && p <= "Z";
 
+/** Strip check/mate marks and annotations, and settle castling spelling. */
+const normaliseSan = (s: string) =>
+  s.trim().replace(/[+#?!]+$/, "").replace(/0/g, "O").replace(/O-O-O/, "OOO").replace(/O-O/, "OO");
+
 export class Engine {
   board = new Array<string>(128).fill(".");
   turn: Color = "w";
@@ -234,6 +238,27 @@ export class Engine {
     return m;
   }
 
+  /**
+   * Apply a move written in SAN.
+   *
+   * `legalMoves()` deliberately does not fill in `san` — naming a move
+   * costs a disambiguation scan, and move generation runs inside perft
+   * where that cost is the whole measurement. So a caller holding a
+   * move list cannot match it against `legalMoves()` by name; it has to
+   * ask here, where the name is computed on demand.
+   *
+   * Check and mate marks, and any annotation glyphs, are ignored when
+   * matching: "Qxf7#", "Qxf7+" and "Qxf7!!" all name the same move, and
+   * a stored game should not become unreadable over punctuation.
+   */
+  playSan(text: string): Move | null {
+    const want = normaliseSan(text);
+    for (const m of this.legalMoves()) {
+      if (normaliseSan(this.san(m)) === want) return this.move(m.from, m.to, m.promotion);
+    }
+    return null;
+  }
+
   private san(m: Move): string {
     if (m.flags & F.CASTLE) return (m.to & 7) === 6 ? "O-O" : "O-O-O";
     const t = m.piece.toLowerCase();
@@ -305,4 +330,95 @@ export class Engine {
     for (const m of this.legalMoves()) { this.make(m); n += this.perft(depth - 1); this.undo(); }
     return n;
   }
+}
+
+// ============================================================
+// Replay — reading a game without rewinding it.
+// ============================================================
+
+/** 0x88 square → 0–63 grid index, rank 8 first. */
+const toGrid = (s: number) => (7 - (s >> 4)) * 8 + (s & 7);
+
+export interface Ply {
+  /** The position after this many half-moves. */
+  fen: string;
+  /** The two squares the last move touched, for the highlight. */
+  move: number[];
+}
+
+/**
+ * The position after `ply` half-moves, rebuilt from the move list.
+ *
+ * Browsing a game must never touch the live position. The obvious
+ * implementation — undoing moves on the game's own engine — leaves the
+ * board one bad path away from disagreeing with the server, and a board
+ * that disagrees with the server is worse than no browsing at all. So
+ * this replays from the start into a throwaway engine and returns a
+ * FEN. The live game is read, never rewound.
+ *
+ * An unparseable move stops the replay rather than throwing: a board
+ * frozen at move 12 is recoverable, a crashed game screen is not.
+ */
+export function positionAtPly(sans: string[], ply: number): Ply {
+  const engine = new Engine();
+  let move: number[] = [];
+
+  const stop = Math.max(0, Math.min(ply, sans.length));
+  for (let i = 0; i < stop; i++) {
+    const played = engine.playSan(sans[i]);
+    if (!played) break;
+    move = [toGrid(played.from), toGrid(played.to)];
+  }
+
+  return { fen: engine.fen(), move };
+}
+
+/** Group a flat SAN list into numbered pairs for display. */
+export function movePairs(sans: string[]): { n: number; w?: string; b?: string }[] {
+  const pairs: { n: number; w?: string; b?: string }[] = [];
+  sans.forEach((san, i) => {
+    const n = Math.floor(i / 2);
+    if (!pairs[n]) pairs[n] = { n: n + 1 };
+    if (i % 2 === 0) pairs[n].w = san;
+    else pairs[n].b = san;
+  });
+  return pairs;
+}
+
+const PIECE_VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9 };
+
+/**
+ * Material balance after every half-move, White minus Black.
+ *
+ * One pass, not one replay per ply: computing "you were ahead for 61%
+ * of the game" by calling positionAtPly in a loop is quadratic, and it
+ * would run on the phone at the exact moment the player is waiting for
+ * their result.
+ */
+export function materialTimeline(sans: string[]): number[] {
+  const engine = new Engine();
+  const out: number[] = [];
+
+  for (const san of sans) {
+    if (!engine.playSan(san)) break;
+    let edge = 0;
+    for (const square of engine.board) {
+      const v = PIECE_VALUE[square.toLowerCase()];
+      if (v) edge += isWhite(square) ? v : -v;
+    }
+    out.push(edge);
+  }
+  return out;
+}
+
+/**
+ * The share of the game a side spent ahead on material, 0–100.
+ * Level positions count for neither player, which is why the two
+ * figures do not add up to 100 — and shouldn't.
+ */
+export function sharePlayerLed(sans: string[], side: "w" | "b"): number {
+  const timeline = materialTimeline(sans);
+  if (timeline.length === 0) return 0;
+  const led = timeline.filter((edge) => (side === "w" ? edge > 0 : edge < 0)).length;
+  return Math.round((led / timeline.length) * 100);
 }

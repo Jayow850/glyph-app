@@ -29,7 +29,8 @@
       "@engine/*": [
         "./lib/*"
       ]
-    }
+    },
+    "allowImportingTsExtensions": true
   },
   "include": [
     "**/*.ts",
@@ -43,6 +44,8 @@
     "lib/test-gameloop.ts",
     "lib/test-money.ts",
     "lib/test-tournament.ts",
-    "lib/test-rating.ts"
+    "lib/test-rating.ts",
+    "lib/test-board.ts",
+    "lib/test-replay.ts"
   ]
 }
