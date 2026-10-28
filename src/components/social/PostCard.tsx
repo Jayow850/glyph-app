@@ -4,13 +4,14 @@ import { EloChip } from "./EloChip";
 import { Avatar } from "@/components/ui/Avatar";
 import { Icon } from "@/components/ui/Icon";
 import { RailMark, RAIL_COLOR } from "@/components/game/RailMarks";
+import { WelcomeButton } from "@/components/club/WelcomeButton";
 import { CommentThread } from "./CommentThread";
 import { Board, fenToFrame } from "./Board";
 import { GameReplay } from "./GameReplay";
 
 export interface PostDto {
   id: string;
-  type: "TEXT" | "PHOTO" | "VIDEO" | "GAME" | "PUZZLE" | "CLIP" | "LIVE";
+  type: "TEXT" | "PHOTO" | "VIDEO" | "GAME" | "PUZZLE" | "CLIP" | "LIVE" | "POSITION" | "MILESTONE" | "BRILLIANCY" | "WELCOME";
   body?: string;
   mediaUrls: string[];
   videoUrl?: string;
@@ -37,6 +38,7 @@ export function PostCard({ post, meLiked = false }: { post: PostDto; meLiked?: b
   const fire = post.reactions.filter((r) => r.kind === "FIRE").length;
   const gmApproved = post.reactions.some((r) => r.kind === "BRILLIANT" && (r.reactorElo ?? 0) >= 2200);
   const elo = post.author.ratings?.[0]?.current;
+  const welcomes = post.reactions.filter((r) => r.kind === "WELCOME").length;
 
   async function toggleLike() {
     setLiked(!liked);
@@ -48,6 +50,29 @@ export function PostCard({ post, meLiked = false }: { post: PostDto; meLiked?: b
   }
 
   const reactionStyle = { display: "flex", alignItems: "center", gap: 6, minWidth: 44, minHeight: 44 } as const;
+
+  if (post.type === "WELCOME") {
+    return (
+      <article
+        className="cascade"
+        style={{
+          display: "flex", alignItems: "center", gap: "var(--s3)",
+          padding: "var(--s4)", borderRadius: "var(--r-lg)",
+          background: "var(--surface)", border: "1px solid var(--border-gold)",
+        }}
+      >
+        <Avatar name={post.author.profile?.fullName ?? "A new member"} size={40} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p className="t-row">{post.author.profile?.fullName ?? "A new member"}</p>
+          <p className="t-rowmeta">
+            joined{post.club ? ` ${post.club.name}` : " the club"}
+            {welcomes > 0 && <> · <span className="digits">{welcomes}</span> welcomed them</>}
+          </p>
+        </div>
+        <WelcomeButton postId={post.id} count={welcomes} compact />
+      </article>
+    );
+  }
 
   return (
     <article className="card cascade">

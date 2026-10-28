@@ -7,6 +7,11 @@ import { Icon } from "@/components/ui/Icon";
 import { Avatar } from "@/components/ui/Avatar";
 import { ListRow, ListGroup } from "@/components/ui/ListRow";
 import { JoinClubButton } from "@/components/club/JoinClubButton";
+import { FirstWeekCard } from "@/components/club/FirstWeekCard";
+import { WelcomeButton } from "@/components/club/WelcomeButton";
+import { firstWeekFor, HOST_DAYS } from "@/lib/services/onboarding";
+import { ClubNightCard } from "@/components/club/ClubNightCard";
+import { clubNightFor } from "@/lib/services/clubnight";
 import { displayRating } from "@/lib/services/ratings";
 import { parseId, label } from "@engine/game/timeControls";
 
@@ -88,6 +93,50 @@ export default async function ClubPage({
   );
 
   const isMember = Boolean(membership);
+  const organiser = membership?.role === "OWNER" || membership?.role === "ADMIN" || membership?.role === "ORGANIZER";
+
+  // The newcomer's own view, and the organizer's view of newcomers.
+  const [firstWeek, newThisWeek, clubNight] = await Promise.all([
+    userId && isMember ? firstWeekFor(club.id, userId) : Promise.resolve(null),
+    organiser
+      ? prisma.membership.findMany({
+          where: {
+            clubId: club.id,
+            active: true,
+            joinedAt: { gte: new Date(Date.now() - HOST_DAYS * 86_400_000) },
+          },
+          include: { user: { include: { profile: true } } },
+          orderBy: { joinedAt: "desc" },
+        })
+      : Promise.resolve([]),
+    clubNightFor(club.id, userId),
+  ]);
+
+  // Which of them have actually played — the ones who have not are the
+  // people a club loses, and they are the only ones worth chasing.
+  const newIds = newThisWeek.map((m) => m.userId);
+  const playedIds = new Set(
+    newIds.length
+      ? (
+          await prisma.liveGame.findMany({
+            where: { OR: [{ whiteId: { in: newIds } }, { blackId: { in: newIds } }] },
+            select: { whiteId: true, blackId: true },
+          })
+        ).flatMap((g) => [g.whiteId, g.blackId])
+      : [],
+  );
+
+  const welcomePosts = newIds.length
+    ? await prisma.post.findMany({
+        where: { clubId: club.id, type: "WELCOME", subjectUserId: { in: newIds } },
+        select: { id: true, subjectUserId: true, _count: { select: { reactions: true } } },
+      })
+    : [];
+  const welcomePostFor = new Map(welcomePosts.map((p) => [p.subjectUserId, p]));
+
+  const host = firstWeek?.hostId
+    ? members.find((m) => m.userId === firstWeek.hostId)?.user ?? null
+    : null;
 
   return (
     <div
@@ -155,6 +204,100 @@ export default async function ClubPage({
           </p>
         )}
       </section>
+
+      {clubNight && (
+        <ClubNightCard
+          id={clubNight.id}
+          clubSlug={slug}
+          clubName={club.name}
+          startsAt={clubNight.startsAt.toISOString()}
+          timeControl={clubNight.timeControl}
+          rounds={clubNight.rounds}
+          state={clubNight.state}
+          tournamentId={clubNight.tournamentId}
+          going={clubNight.going}
+          maybe={clubNight.maybe}
+          yourState={isMember ? clubNight.yourState : null}
+          canRsvp={isMember}
+          startable={clubNight.startable}
+          canStart={Boolean(organiser)}
+        />
+      )}
+
+      {firstWeek && !firstWeek.done && (
+        <FirstWeekCard
+          clubSlug={slug}
+          clubName={club.name}
+          day={firstWeek.day}
+          pickedTimeControl={firstWeek.pickedTimeControl}
+          playedClubGame={firstWeek.playedClubGame}
+          metMembers={firstWeek.metMembers}
+          done={firstWeek.done}
+        />
+      )}
+
+      {/* Somebody is responsible for you this week, by name. */}
+      {host && (
+        <section>
+          <h2 className="section-label" style={{ marginBottom: "var(--s3)" }}>Your host this week</h2>
+          <ListGroup>
+            <ListRow
+              size="sm"
+              name={host.profile?.fullName ?? "A member"}
+              country={host.profile?.country}
+              title={host.profile?.title}
+              meta={["here to help you settle in"]}
+              action={
+                host.profile?.handle ? (
+                  <Link
+                    href={`/profile/${host.profile.handle}`}
+                    className="t-caption press"
+                    style={{ color: "var(--gold)", fontWeight: 600, textDecoration: "none" }}
+                  >
+                    Say hello
+                  </Link>
+                ) : null
+              }
+            />
+          </ListGroup>
+        </section>
+      )}
+
+      {/* Organizers only: who arrived, and who nobody has spoken to. */}
+      {organiser && newThisWeek.length > 0 && (
+        <section>
+          <h2 className="section-label" style={{ marginBottom: "var(--s3)" }}>New members this week</h2>
+          <ListGroup>
+            {newThisWeek.map((m) => {
+              const post = welcomePostFor.get(m.userId);
+              const played = playedIds.has(m.userId);
+              const days = Math.floor((Date.now() - m.joinedAt.getTime()) / 86_400_000);
+              return (
+                <ListRow
+                  key={m.userId}
+                  size="sm"
+                  name={m.user.profile?.fullName ?? "A new member"}
+                  country={m.user.profile?.country}
+                  title={m.user.profile?.title}
+                  highlight={!played}
+                  meta={[
+                    days === 0 ? "joined today" : `joined ${days}d ago`,
+                    m.welcomedAt ? "welcomed" : <span key="nw" style={{ color: "var(--gold)" }}>not welcomed</span>,
+                    played
+                      ? "has played"
+                      : <span key="np" style={{ color: "var(--danger)" }}>no games yet</span>,
+                  ]}
+                  action={
+                    post && !m.welcomedAt ? (
+                      <WelcomeButton postId={post.id} count={post._count.reactions} compact />
+                    ) : null
+                  }
+                />
+              );
+            })}
+          </ListGroup>
+        </section>
+      )}
 
       {liveGames.length > 0 && (
         <section>

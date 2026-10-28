@@ -11,6 +11,8 @@ import { streaksFor, recentForm } from "@/lib/services/streak";
 import { Icon, SPEED_ICON } from "@/components/ui/Icon";
 import { CATEGORY_ORDER, CATEGORY_LABEL, parseId, label, classify } from "@engine/game/timeControls";
 import { sideToMove, readClocks } from "@/lib/game-clock";
+import { ClubNightCard } from "@/components/club/ClubNightCard";
+import { clubNightFor } from "@/lib/services/clubnight";
 
 export const metadata = { title: "Games" };
 
@@ -234,6 +236,12 @@ export default async function ChallengesPage() {
     (g) => sideToMove(g.fen) === (g.whiteId === userId ? "w" : "b"),
   ).length;
 
+  // Club nights, but only the ones close enough to act on. This page is
+  // about tonight; a night eight days out belongs on the club page.
+  const nights = (await Promise.all(clubIds.map((id) => clubNightFor(id, userId))))
+    .filter((n): n is NonNullable<typeof n> => n !== null && (n.imminent || n.state === "LIVE"))
+    .sort((a, b) => a.msUntil - b.msUntil);
+
   return (
     <div className="page-bottom"
       style={{ paddingTop: "var(--s5)", display: "flex", flexDirection: "column", gap: "var(--s6)" }}>
@@ -325,6 +333,35 @@ export default async function ChallengesPage() {
                 </div>
               );
             })}
+          </div>
+        </section>
+      )}
+
+      {/* Tonight, if there is a tonight. Above Play because turning up to
+          the club beats finding a stranger. */}
+      {nights.length > 0 && (
+        <section>
+          <SectionHeader urgent={nights.some((n) => n.state === "LIVE")}>Club night</SectionHeader>
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}>
+            {nights.map((n) => (
+              <ClubNightCard
+                key={n.id}
+                id={n.id}
+                clubSlug={n.clubSlug}
+                clubName={n.clubName}
+                showClub
+                startsAt={n.startsAt.toISOString()}
+                timeControl={n.timeControl}
+                rounds={n.rounds}
+                state={n.state}
+                tournamentId={n.tournamentId}
+                going={n.going}
+                maybe={n.maybe}
+                yourState={n.yourState}
+                startable={n.startable}
+                canStart={false}
+              />
+            ))}
           </div>
         </section>
       )}

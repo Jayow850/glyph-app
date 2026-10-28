@@ -3,6 +3,22 @@ import { invalidate } from "../redis";
 import { notify } from "./notifications";
 import type { ReactionKind } from "@prisma/client";
 
+/**
+ * What each reaction is called in a notification.
+ *
+ * Partial on purpose: a Record<ReactionKind, string> has to be edited
+ * every time a kind is added or the build breaks, which is how the
+ * emoji map this replaced fell over. A missing entry falls back
+ * instead of failing.
+ */
+const REACTION_WORD: Partial<Record<ReactionKind, string>> = {
+  PAWN: "Respect",
+  BRILLIANT: "Brilliant",
+  FIRE: "Nice move",
+  SHOCK: "Blunder",
+  WELCOME: "A welcome",
+};
+
 /** Toggle a reaction. Brilliants snapshot the reactor's Elo ("GM-approved"). */
 export async function react(userId: string, kind: ReactionKind, target: { postId?: string; commentId?: string; messageId?: string }) {
   const existing = await prisma.reaction.findFirst({ where: { userId, kind, ...target } });
@@ -17,8 +33,12 @@ export async function react(userId: string, kind: ReactionKind, target: { postId
     await invalidate("feed:");
     const post = await prisma.post.findUnique({ where: { id: target.postId } });
     if (post && post.authorId !== userId) {
-      const emoji = { PAWN: "♟", BRILLIANT: "👑", FIRE: "🔥", SHOCK: "🤯" }[kind];
-      await notify({ userIds: [post.authorId], type: "SYSTEM", title: `${emoji} on your post`, linkUrl: `/post/${post.id}` });
+      await notify({
+        userIds: [post.authorId],
+        type: "SYSTEM",
+        title: `${REACTION_WORD[kind] ?? "A reaction"} on your post`,
+        linkUrl: `/post/${post.id}`,
+      });
     }
   }
   return { toggled: "on" };

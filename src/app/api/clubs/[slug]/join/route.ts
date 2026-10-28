@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { assertWithinLimits } from "@/lib/limits";
-import { notify } from "@/lib/services/notifications";
+import { onJoinClub } from "@/lib/services/onboarding";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
   const userId = await requireUser();
@@ -26,15 +26,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     update: { active: true },
   });
 
-  const admins = await prisma.membership.findMany({
-    where: { clubId: club.id, role: { in: ["OWNER", "ADMIN"] } },
-  });
-  await notify({
-    userIds: admins.map((a) => a.userId),
-    type: "CLUB_ANNOUNCEMENT",
-    title: "New member joined your club",
-    linkUrl: `/club/${slug}/members`,
-  });
+  // The club notices. Welcome post, a host for the first week, and
+  // the organisers told — see services/onboarding.ts. It never throws,
+  // so a failure there cannot cost someone their membership.
+  await onJoinClub(club.id, userId);
 
   return NextResponse.json(membership, { status: 201 });
 }

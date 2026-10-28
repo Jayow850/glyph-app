@@ -140,6 +140,11 @@ enum PostType {
   PUZZLE
   CLIP
   LIVE
+  POSITION
+  MILESTONE
+  BRILLIANCY
+  /** "X joined the club" — a real post, so it takes replies and welcomes. */
+  WELCOME
 }
 
 enum ReactionKind {
@@ -147,6 +152,9 @@ enum ReactionKind {
   BRILLIANT
   FIRE
   SHOCK
+  /** Greeting a newcomer. Counted, because being seen to do it is
+      what makes people do it again. */
+  WELCOME
 }
 
 enum JoinRequestStatus {
@@ -219,6 +227,11 @@ model User {
   spectating     Spectator[]
   railReactions  RailReaction[]
   whispers       Whisper[]
+  clubNightRsvps ClubNightRsvp[]
+  ladderRungs    LadderRung[]
+  reportsRaised  Report[] @relation("ReportsRaised")
+  blocksMade     Block[]  @relation("BlocksMade")
+  blocksAgainst  Block[]  @relation("BlocksAgainst")
 
   @@index([email])
 }
@@ -324,6 +337,10 @@ model Club {
 
   memberships  Membership[]
   tournaments  Tournament[]
+  clubNights   ClubNight[]
+  ladder       LadderRung[]
+  homeMatches  TeamMatch[] @relation("TeamMatchHome")
+  awayMatches  TeamMatch[] @relation("TeamMatchAway")
   ratings      Rating[]
   posts        Post[]
   events       Event[]
@@ -346,6 +363,10 @@ model Membership {
   role     Role     @default(PLAYER)
   joinedAt DateTime @default(now())
   active   Boolean  @default(true)
+  /** Who is looking after this member for their first week. */
+  hostFor    String?
+  /** Set when the first welcome lands, so nobody is welcomed twice. */
+  welcomedAt DateTime?
 
   @@unique([userId, clubId])
   @@index([clubId, role])
@@ -625,6 +646,11 @@ model Post {
 
   puzzleFen      String?
   puzzleSolution String?
+  /** Who answered a POSITION post correctly. */
+  puzzleSolvedBy String[] @default([])
+  /** A GAME or WELCOME post points back at what it is about. */
+  liveGameId     String?
+  subjectUserId  String?
   solveCount     Int      @default(0)
   attemptCount   Int      @default(0)
 
@@ -996,4 +1022,167 @@ model Whisper {
   createdAt  DateTime @default(now())
 
   @@index([liveGameId, createdAt])
+}
+
+
+// ============================================================
+// CLUB NIGHT — the weekly rhythm a real club runs on.
+// Recurring by definition: a one-off event that has to be recreated
+// every week is the thing clubs stop doing.
+// ============================================================
+
+enum ClubNightState {
+  SCHEDULED
+  LIVE
+  FINISHED
+  CANCELLED
+}
+
+enum RsvpState {
+  GOING
+  MAYBE
+  OUT
+}
+
+model ClubNight {
+  id          String         @id @default(cuid())
+  clubId      String
+  club        Club           @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  /** 0 = Sunday. With startsAt this defines the recurrence. */
+  dayOfWeek   Int
+  /** The next occurrence. Rolled forward a week once it finishes. */
+  startsAt    DateTime
+  timeControl String         @default("600+5")
+  rounds      Int            @default(3)
+  state       ClubNightState @default(SCHEDULED)
+  active      Boolean        @default(true)
+  /**
+   * The tournament this occurrence is running as.
+   *
+   * A club night IS a small Swiss, so it runs as one rather than
+   * growing a second pairing implementation beside the tested one.
+   * Cleared when the occurrence rolls forward to next week.
+   */
+  tournamentId String?
+  createdAt   DateTime       @default(now())
+
+  rsvps ClubNightRsvp[]
+
+  @@index([clubId, startsAt])
+}
+
+model ClubNightRsvp {
+  id          String    @id @default(cuid())
+  clubNightId String
+  clubNight   ClubNight @relation(fields: [clubNightId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  state       RsvpState @default(GOING)
+  /** Present when it actually started — RSVP is intent, this is attendance. */
+  checkedInAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([clubNightId, userId])
+  @@index([clubNightId, state])
+}
+
+// ============================================================
+// THE LADDER — beat someone above you and take their rung.
+// A century-old club tradition that exists in no app.
+// ============================================================
+
+model LadderRung {
+  id       String   @id @default(cuid())
+  clubId   String
+  club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  position Int
+  movedAt  DateTime @default(now())
+
+  @@unique([clubId, userId])
+  /** Two members cannot occupy the same rung. */
+  @@unique([clubId, position])
+}
+
+// ============================================================
+// CLUB vs CLUB — a team match across several boards.
+// ============================================================
+
+enum TeamMatchState {
+  PROPOSED
+  ACCEPTED
+  LIVE
+  FINISHED
+  CANCELLED
+}
+
+model TeamMatch {
+  id         String         @id @default(cuid())
+  homeClubId String
+  homeClub   Club           @relation("TeamMatchHome", fields: [homeClubId], references: [id], onDelete: Cascade)
+  awayClubId String
+  awayClub   Club           @relation("TeamMatchAway", fields: [awayClubId], references: [id], onDelete: Cascade)
+  startsAt   DateTime
+  state      TeamMatchState @default(PROPOSED)
+  homeScore  Float          @default(0)
+  awayScore  Float          @default(0)
+  createdAt  DateTime       @default(now())
+
+  boards TeamBoard[]
+
+  @@index([homeClubId, state])
+  @@index([awayClubId, state])
+}
+
+model TeamBoard {
+  id          String    @id @default(cuid())
+  teamMatchId String
+  teamMatch   TeamMatch @relation(fields: [teamMatchId], references: [id], onDelete: Cascade)
+  boardNumber Int
+  homeUserId  String
+  awayUserId  String
+  liveGameId  String?
+
+  @@unique([teamMatchId, boardNumber])
+}
+
+// ============================================================
+// MODERATION — a community product without these is negligent.
+// ============================================================
+
+enum ReportState {
+  OPEN
+  REVIEWING
+  ACTIONED
+  DISMISSED
+}
+
+model Report {
+  id         String      @id @default(cuid())
+  reporterId String
+  reporter   User        @relation("ReportsRaised", fields: [reporterId], references: [id], onDelete: Cascade)
+  /** "post" | "message" | "user" | "game" — kept loose so a new surface
+      does not need a migration to become reportable. */
+  targetType String
+  targetId   String
+  reason     String
+  detail     String?
+  state      ReportState @default(OPEN)
+  createdAt  DateTime    @default(now())
+
+  @@index([state, createdAt])
+  @@index([targetType, targetId])
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blocker   User     @relation("BlocksMade", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockedId String
+  blocked   User     @relation("BlocksAgainst", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId])
 }
