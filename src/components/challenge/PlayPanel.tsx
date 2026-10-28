@@ -52,6 +52,7 @@ export function PlayPanel() {
   const [colour, setColour] = useState<"random" | "white" | "black">("random");
   const [busy, setBusy] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const [help, setHelp] = useState(false);
 
   const router = useRouter();
   const { message, show } = useToast();
@@ -178,14 +179,26 @@ export function PlayPanel() {
         ))}
       </div>
 
-      {/* Settings, secondary weight, one row. */}
-      <div style={{ display: "flex", gap: "var(--s2)", flexWrap: "wrap" }}>
-        <Chip on={rated} onClick={() => setRated(true)}>Rated</Chip>
-        <Chip on={!rated} onClick={() => setRated(false)}>Casual</Chip>
-        <span style={{ width: 1, background: "var(--border)", margin: "4px 2px" }} />
-        <Chip on={colour === "random"} onClick={() => setColour("random")}>Random</Chip>
-        <Chip on={colour === "white"} onClick={() => setColour("white")}>White</Chip>
-        <Chip on={colour === "black"} onClick={() => setColour("black")}>Black</Chip>
+      {/* Two segmented controls rather than five loose chips: at 360px
+          the chips wrapped and "Black" dropped onto a line of its own,
+          which read as a layout accident. Segments cannot wrap. */}
+      <div style={{ display: "flex", gap: "var(--s2)" }}>
+        <Segmented
+          label="Stake"
+          options={[{ id: "rated", label: "Rated" }, { id: "casual", label: "Casual" }]}
+          value={rated ? "rated" : "casual"}
+          onChange={(v) => setRated(v === "rated")}
+        />
+        <Segmented
+          label="Colour"
+          options={[
+            { id: "random", label: "Random" },
+            { id: "white", label: "White" },
+            { id: "black", label: "Black" },
+          ]}
+          value={colour}
+          onChange={(v) => setColour(v as typeof colour)}
+        />
       </div>
 
       <div style={{ display: "flex", gap: "var(--s3)" }}>
@@ -204,13 +217,92 @@ export function PlayPanel() {
         Post to club board
       </button>
 
-      <p className="t-caption" style={{ color: "var(--text-dim)" }}>
-        Quick play finds the club member closest to your {category.toLowerCase()} rating.
-        A posted seek waits 20 minutes for anyone in your club to take it.
-      </p>
+      <div>
+        <button
+          onClick={() => setHelp((h) => !h)}
+          aria-expanded={help}
+          className="press"
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 5,
+            background: "none", border: "none", padding: 0, cursor: "pointer",
+            color: "var(--text-dim)", fontSize: "var(--t-caption)",
+          }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 15, height: 15, borderRadius: "50%", display: "grid", placeItems: "center",
+              border: "1px solid currentColor", fontSize: 10, fontWeight: 700, lineHeight: 1,
+            }}
+          >
+            i
+          </span>
+          How this works
+        </button>
+        {help && (
+          <p className="t-caption" style={{ color: "var(--text-dim)", marginTop: "var(--s2)" }}>
+            Quick play finds the club member closest to your {category.toLowerCase()} rating.
+            Choose picks a specific opponent. A seek posted to the club board waits
+            20 minutes for anyone in your club to take it.
+          </p>
+        )}
+      </div>
 
       <OpponentSheet open={sheet} onClose={() => setSheet(false)} category={category} onPick={challenge} />
       <Toast message={message} />
     </section>
+  );
+}
+
+/**
+ * A segmented control, not a row of chips.
+ *
+ * Chips wrap, and at 360px the colour chips wrapped so that "Black"
+ * landed alone on the next line — which reads as something broken
+ * rather than something designed. Segments share a track and shrink
+ * instead.
+ */
+function Segmented({
+  label, options, value, onChange,
+}: {
+  label: string;
+  options: { id: string; label: string }[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={label}
+      style={{
+        display: "flex", flex: 1, minWidth: 0, gap: 2, padding: 3,
+        background: "var(--surface-2)", border: "1px solid var(--border)",
+        borderRadius: "var(--r-full)",
+      }}
+    >
+      {options.map((o) => {
+        const on = o.id === value;
+        return (
+          <button
+            key={o.id}
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(o.id)}
+            className="press"
+            style={{
+              flex: 1, minWidth: 0, borderRadius: "var(--r-full)", border: "none",
+              padding: "7px 4px", fontSize: "var(--t-caption)", fontWeight: 600,
+              cursor: "pointer", whiteSpace: "nowrap",
+              overflow: "hidden", textOverflow: "ellipsis",
+              background: on ? "var(--gold)" : "transparent",
+              color: on ? "var(--gold-ink)" : "var(--text-muted)",
+              transition: "background 160ms var(--ease), color 160ms var(--ease)",
+            }}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

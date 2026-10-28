@@ -278,6 +278,7 @@ export function LiveGameBoard({
   const [previewPly, setPreviewPly] = useState<number | null>(null);
   const [promo, setPromo] = useState<{ from: number; to: number } | null>(null);
   const [railMuted, setRailMuted] = useState(false);
+  const [animMs, setAnimMs] = useState(130);
   const [reveal, setReveal] = useState(0);
   const [railCount, setRailCount] = useState(0);
 
@@ -304,6 +305,20 @@ export function LiveGameBoard({
   const stripRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => setSoundOff(isMuted()), []);
+
+  // Per device, not per account: how fast a board feels is about the
+  // screen in your hand, and chess.com users ask for this specifically.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("glyph-anim");
+      if (saved !== null) setAnimMs(Number(saved));
+    } catch { /* blocked */ }
+  }, []);
+
+  function chooseAnim(ms: number) {
+    setAnimMs(ms);
+    try { localStorage.setItem("glyph-anim", String(ms)); } catch { /* blocked */ }
+  }
 
   // Counted once the game is over, which is the only time the thread
   // is readable. `status` rather than the `live` derived below, because
@@ -406,7 +421,8 @@ export function LiveGameBoard({
       return () => clearTimeout(t);
     }
     if (endPhase === "band") {
-      const t = setTimeout(() => setEndPhase("sheet"), 760);
+      // 460ms to sweep across, then long enough to actually read it.
+      const t = setTimeout(() => setEndPhase("sheet"), 1150);
       return () => clearTimeout(t);
     }
   }, [endPhase]);
@@ -689,7 +705,7 @@ export function LiveGameBoard({
 
           <div style={{ flex: 1, minWidth: 0, textAlign: "center" }}>
             <p style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              vs {opponent}
+              {youAre ? `vs ${opponent}` : `${whiteName} vs ${blackName}`}
             </p>
             <p className="t-caption digits" style={{ color: "var(--text-muted)", lineHeight: 1.1 }}>
               {youAre && <>You play {youAre === "w" ? "White" : "Black"} · </>}
@@ -759,9 +775,10 @@ export function LiveGameBoard({
               checkSquare={checkSquare}
               coords={coordsOn}
               disabled={!myTurn}
+              animMs={animMs}
               onBrowse={(dir) => stepTo(atPly + dir)}
             />
-            {(endPhase === "band" || endPhase === "sheet") && (
+            {endPhase === "band" && (
               <div className={`result-band ${bandTone}`}>
                 <span>{bandText}</span>
               </div>
@@ -920,6 +937,46 @@ export function LiveGameBoard({
             onToggle={() => { const next = !soundOff; setMuted(next); setSoundOff(next); if (!next) playMove(); }}
           />
           <SettingRow label="Coordinates" on={coordsOn} onToggle={() => setCoordsOn((v) => !v)} />
+
+          <div>
+            <p className="section-label" style={{ marginBottom: "var(--s2)" }}>Piece speed</p>
+            <div
+              role="radiogroup"
+              aria-label="Piece speed"
+              style={{
+                display: "flex", gap: 2, padding: 3,
+                background: "var(--surface-2)", border: "1px solid var(--border)",
+                borderRadius: "var(--r-full)",
+              }}
+            >
+              {[
+                { ms: 0, label: "Instant" },
+                { ms: 90, label: "Fast" },
+                { ms: 130, label: "Normal" },
+                { ms: 220, label: "Slow" },
+              ].map((o) => {
+                const on = animMs === o.ms;
+                return (
+                  <button
+                    key={o.ms}
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => chooseAnim(o.ms)}
+                    className="press"
+                    style={{
+                      flex: 1, borderRadius: "var(--r-full)", border: "none",
+                      padding: "7px 4px", fontSize: "var(--t-caption)", fontWeight: 600,
+                      cursor: "pointer",
+                      background: on ? "var(--gold)" : "transparent",
+                      color: on ? "var(--gold-ink)" : "var(--text-muted)",
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <SettingRow label="Flip board" on={flipped} onToggle={() => setFlipOverride(!flipped)} />
           {youAre && (
             <SettingRow

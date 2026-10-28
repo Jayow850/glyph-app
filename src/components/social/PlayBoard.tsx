@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useCallback, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, useState, useEffect, useCallback, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Piece } from "./Pieces";
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
@@ -20,6 +20,7 @@ export function PlayBoard({
   disabled = false,
   bare = false,
   onBrowse,
+  animMs = 130,
 }: {
   frame: string[];                 // 8 rank-strings, rank 8 first
   selected: number | null;         // 0–63 grid index (always white's orientation)
@@ -45,11 +46,70 @@ export function PlayBoard({
    * a swipe.
    */
   onBrowse?: (direction: -1 | 1) => void;
+  /** How long a piece takes to travel. 0 disables the animation. */
+  animMs?: number;
 }) {
   // One flat board, indexed the same way regardless of which side is
   // looking at it. Flipping is purely a rendering concern: square 0 is
   // always a8, so every caller keeps working in one coordinate system.
   const squares = frame.join("").split("");
+  const key = squares.join("");
+
+  /**
+   * Pieces travel to their new square instead of teleporting.
+   *
+   * The board re-renders from a FEN, which carries no notion of which
+   * piece went where — so the move is recovered by diffing the two
+   * positions: a square that emptied and a square that filled with the
+   * same piece are the same piece, and the difference between them is
+   * the distance to cover. That handles captures and castling (two
+   * pieces, matched separately by code) and correctly declines to
+   * animate a promotion, where the piece that lands is not the piece
+   * that left.
+   *
+   * The travel is then one CSS animation from an offset back to zero,
+   * which the compositor runs on its own thread — no per-frame React
+   * work while a clock is ticking.
+   */
+  const prevRef = useRef<string | null>(null);
+  const seqRef = useRef(0);
+  const [slides, setSlides] = useState<Record<number, { dx: number; dy: number; seq: number }>>({});
+
+  useEffect(() => {
+    const prev = prevRef.current;
+    prevRef.current = key;
+    if (!prev || prev.length !== 64 || animMs <= 0) return;
+
+    const emptied: number[] = [];
+    const filled: number[] = [];
+    for (let i = 0; i < 64; i++) {
+      if (prev[i] === key[i]) continue;
+      if (key[i] === ".") emptied.push(i);
+      else filled.push(i);
+    }
+    // More than a castling's worth of change is a jump through the move
+    // list, not a move. Those should not slide.
+    if (emptied.length === 0 || filled.length === 0 || emptied.length > 2 || filled.length > 2) {
+      setSlides({});
+      return;
+    }
+
+    const next: Record<number, { dx: number; dy: number; seq: number }> = {};
+    const pool = [...emptied];
+    for (const to of filled) {
+      const at = pool.findIndex((f) => prev[f] === key[to]);
+      if (at === -1) continue;                       // a promotion: nothing to carry
+      const from = pool.splice(at, 1)[0];
+      const dFrom = flipped ? 63 - from : from;
+      const dTo = flipped ? 63 - to : to;
+      next[to] = {
+        dx: (dFrom % 8) - (dTo % 8),
+        dy: Math.floor(dFrom / 8) - Math.floor(dTo / 8),
+        seq: ++seqRef.current,
+      };
+    }
+    setSlides(next);
+  }, [key, flipped, animMs]);
 
   const gridRef = useRef<HTMLDivElement>(null);
   const originRef = useRef<{ from: number; x: number; y: number } | null>(null);
@@ -241,18 +301,32 @@ export function PlayBoard({
                 />
               )}
 
-              {ch !== "." && (
-                <span
-                  style={{
-                    position: "relative", display: "grid", placeItems: "center",
-                    width: "100%", height: "100%",
-                    // The piece in hand is drawn under the pointer, not here.
-                    opacity: isSource ? 0.22 : 1,
-                  }}
-                >
-                  <Piece code={ch} />
-                </span>
-              )}
+              {ch !== "." && (() => {
+                const slide = slides[idx];
+                return (
+                  <span
+                    // A new key restarts the animation; without it React
+                    // reuses the element and the piece never moves again.
+                    key={slide ? `s${slide.seq}` : "still"}
+                    className={slide && !isSource ? "piece-slide" : undefined}
+                    style={{
+                      position: "relative", display: "grid", placeItems: "center",
+                      width: "100%", height: "100%", zIndex: slide ? 2 : 1,
+                      // The piece in hand is drawn under the pointer, not here.
+                      opacity: isSource ? 0.22 : 1,
+                      ...(slide
+                        ? ({
+                            "--dx": `${slide.dx * 100}%`,
+                            "--dy": `${slide.dy * 100}%`,
+                            "--piece-ms": `${animMs}ms`,
+                          } as CSSProperties)
+                        : null),
+                    }}
+                  >
+                    <Piece code={ch} />
+                  </span>
+                );
+              })()}
 
               {/* legal-move hint: dot on empty squares, ring on captures */}
               {isTarget && (
