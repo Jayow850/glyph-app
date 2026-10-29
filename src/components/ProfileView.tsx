@@ -8,6 +8,8 @@ import { Icon } from "@/components/ui/Icon";
 import { Sparkline } from "@/components/ui/Sparkline";
 import { ListRow, ListGroup } from "@/components/ui/ListRow";
 import { streaksFor, recentForm } from "@/lib/services/streak";
+import { trophiesFor } from "@/lib/services/trophies";
+import { TrophyShelf } from "@/components/trophy/TrophyShelf";
 import { CATEGORY_ORDER, CATEGORY_LABEL, parseId, label } from "@engine/game/timeControls";
 
 const PIP = { W: "var(--success)", L: "var(--danger)", D: "var(--draw)" } as const;
@@ -79,6 +81,8 @@ export async function ProfileView({
     streaksFor([userId]),
     recentForm(userId, 5),
   ]);
+
+  const honours = await trophiesFor(userId);
 
   // Rivalry is the emotional core of club chess, and the first thing
   // anyone wants to know when they open someone else's profile.
@@ -239,6 +243,9 @@ export async function ProfileView({
           </Link>
         )}
       </section>
+
+      {/* Silverware outranks every number below it. */}
+      <TrophyShelf trophies={honours} />
 
       {/* Rating, with the shape of how it got there. Every rated game
           has written a history row since the Glicko-2 work; this is

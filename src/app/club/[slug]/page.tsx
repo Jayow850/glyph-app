@@ -20,6 +20,9 @@ import { LeagueTable } from "@/components/season/LeagueTable";
 import { GamesOwed } from "@/components/season/GamesOwed";
 import { OrganiserPanel } from "@/components/season/OrganiserPanel";
 import { canRunCompetitions, canAwardHonours } from "@/lib/services/officers";
+import { trophyCabinet } from "@/lib/services/trophies";
+import { TrophyCabinet } from "@/components/trophy/TrophyCabinet";
+import { TrophyForm } from "@/components/trophy/TrophyForm";
 import { displayRating } from "@/lib/services/ratings";
 import { parseId, label } from "@engine/game/timeControls";
 
@@ -120,6 +123,9 @@ export default async function ClubPage({
       : Promise.resolve([]),
     clubNightFor(club.id, userId),
   ]);
+
+  // The cabinet by the door.
+  const trophies = await trophyCabinet(club.id);
 
   // ---- The season, and everything that reports into it ----
   const season = await currentSeason(club.id);
@@ -482,6 +488,16 @@ export default async function ClubPage({
               );
             })}
           </ListGroup>
+        </section>
+      )}
+
+      {/* The trophy cabinet. Hidden from non-members only when there is
+          nothing in it and nobody present who could fill it. */}
+      {(trophies.length > 0 || canClose) && (
+        <section style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}>
+          <h2 className="section-label">Trophies</h2>
+          <TrophyCabinet clubSlug={club.slug} trophies={trophies} canAdd={canClose} />
+          {canClose && <TrophyForm clubSlug={club.slug} />}
         </section>
       )}
 

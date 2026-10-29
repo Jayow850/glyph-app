@@ -307,7 +307,29 @@ export async function decidePlayoff(
  */
 export async function previewHonours(seasonId: string): Promise<string[] | null> {
   const built = await buildHonours(seasonId);
-  return built?.lines ?? null;
+  if (!built) return null;
+
+  // Name the trophies that would be engraved, without engraving them.
+  const pending = await prisma.trophy.findMany({
+    where: {
+      clubId: built.season.clubId,
+      awardedFor: { not: "MANUAL" },
+      awards: { none: { seasonId } },
+    },
+    select: { name: true, awardedFor: true },
+  });
+
+  const willAward = pending
+    .filter((t) =>
+      t.awardedFor === "SEASON_CHAMPION" ? built.decided.championId
+      : t.awardedFor === "DIVISION_WINNER" ? built.decided.divisionWinners.length > 0
+      : t.awardedFor === "MOST_IMPROVED" ? built.decided.mostImprovedId
+      : t.awardedFor === "BEST_ATTENDANCE" ? built.decided.bestAttendanceId
+      : false,
+    )
+    .map((t) => `The ${t.name} will be awarded.`);
+
+  return [...built.lines, ...willAward];
 }
 
 async function buildHonours(seasonId: string) {
@@ -331,9 +353,15 @@ async function buildHonours(seasonId: string) {
   const improvement = await mostImproved(seasonId, played.map((p) => p.userId));
 
   const divisionWinners: string[] = [];
+  // Kept as ids too: the honours post needs names, the trophy cabinet
+  // needs who to engrave.
+  const divisionWinnerIds: { divisionName: string; userId: string }[] = [];
   for (const d of season.divisions) {
     const winner = d.members.find((m) => m.finalRank === 1);
-    if (winner) divisionWinners.push(`${d.name}: ${nameOf(winner.userId) ?? "—"}`);
+    if (winner) {
+      divisionWinners.push(`${d.name}: ${nameOf(winner.userId) ?? "—"}`);
+      divisionWinnerIds.push({ divisionName: d.name, userId: winner.userId });
+    }
   }
 
   const lines = [
@@ -347,7 +375,16 @@ async function buildHonours(seasonId: string) {
       : null,
   ].filter(Boolean) as string[];
 
-  return { season, lines, champion, nameOf, played };
+  return {
+    season, lines, champion, nameOf, played,
+    decided: {
+      championId: champion,
+      divisionWinners: divisionWinnerIds,
+      mostImprovedId: improvement?.userId ?? null,
+      bestAttendanceId:
+        bestAttendance && bestAttendance.attendance > 0 ? bestAttendance.userId : null,
+    },
+  };
 }
 
 /**
@@ -359,7 +396,14 @@ async function buildHonours(seasonId: string) {
 export async function closeSeason(seasonId: string) {
   const built = await buildHonours(seasonId);
   if (!built || built.season.status === "COMPLETE") return null;
-  const { season, lines, champion, nameOf, played } = built;
+  const { season, champion, nameOf, played, decided } = built;
+
+  // The silverware is part of the ceremony, not an afterthought somebody
+  // has to remember. Awarding happens before the post is written so the
+  // trophies appear in it.
+  const { awardSeasonTrophies } = await import("./trophies");
+  const trophyLines = await awardSeasonTrophies(seasonId, decided).catch(() => [] as string[]);
+  const lines = trophyLines.length > 0 ? [...built.lines, ...trophyLines] : built.lines;
 
   const owner = await prisma.membership.findFirst({
     where: { clubId: season.clubId, role: "OWNER", active: true },
@@ -424,11 +468,13 @@ async function mostImproved(seasonId: string, userIds: string[]) {
     names.set(uid, h.glyphRating.user.profile?.fullName ?? "A member");
   }
 
-  let best: { name: string; gain: number } | null = null;
+  // The id travels with the name: the honours post needs one, the
+  // trophy needs the other.
+  let best: { userId: string; name: string; gain: number } | null = null;
   for (const [uid, start] of first) {
     const gain = Math.round((last.get(uid) ?? start) - start);
     if (gain > 0 && (!best || gain > best.gain)) {
-      best = { name: names.get(uid) ?? "A member", gain };
+      best = { userId: uid, name: names.get(uid) ?? "A member", gain };
     }
   }
   return best;

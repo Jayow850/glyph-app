@@ -544,17 +544,34 @@ model LadderChallenge {
 }
 
 /// A named trophy with decades of history behind it.
+///
+/// Clubs name these after members who served them — the Cookworthy Cup,
+/// the M. Wray Shield — and the name is the part anybody is sentimental
+/// about. "Division 1 Winner" is not a trophy.
 model Trophy {
   id          String   @id @default(cuid())
   clubId      String
   club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
   name        String
   description String?
+  /** Who it honours, or who presented it. Shown on the roll of honour. */
+  namedAfter  String?
+  /** What wins it. MANUAL is awarded at the officers' discretion. */
+  awardedFor  TrophyKind @default(MANUAL)
   createdAt   DateTime @default(now())
 
   awards TrophyAward[]
 
   @@unique([clubId, name])
+}
+
+enum TrophyKind {
+  SEASON_CHAMPION
+  DIVISION_WINNER
+  LADDER_CHAMPION
+  BEST_ATTENDANCE
+  MOST_IMPROVED
+  MANUAL
 }
 
 model TrophyAward {
@@ -565,8 +582,18 @@ model TrophyAward {
    *  honour back to 1974, long before GLYPH existed. */
   seasonId  String?
   season    Season?  @relation(fields: [seasonId], references: [id])
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /**
+   * Null for a winner who was never a GLYPH user.
+   *
+   * A club arriving with fifty years of history has fifty winners and
+   * perhaps five accounts. Requiring a User row here would mean either
+   * inventing accounts for the dead or throwing the history away, and a
+   * roll of honour that starts in 2026 is not a roll of honour.
+   */
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /** The name as it is engraved, when there is no account behind it. */
+  winnerName String?
   /** The season as written on the trophy itself: "1987-88". */
   year      String
   note      String?
