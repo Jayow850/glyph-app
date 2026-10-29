@@ -17,6 +17,15 @@ datasource db {
 
 enum Role {
   OWNER
+  /// Real clubs are run by officers, not admins. Added, never renamed:
+  /// every existing membership keeps the role it already has.
+  PRESIDENT
+  /// Directs the club championship.
+  VICE_PRESIDENT
+  /// Maintains the league tables.
+  COMPETITION_SECRETARY
+  SECRETARY
+  TREASURER
   ADMIN
   ORGANIZER
   ARBITER
@@ -232,6 +241,13 @@ model User {
   reportsRaised  Report[] @relation("ReportsRaised")
   blocksMade     Block[]  @relation("BlocksMade")
   blocksAgainst  Block[]  @relation("BlocksAgainst")
+  seasonsWon         Season[]          @relation("SeasonChampion")
+  divisionMemberships DivisionMember[]
+  fixturesWhite      LeagueFixture[]   @relation("FixtureWhite")
+  fixturesBlack      LeagueFixture[]   @relation("FixtureBlack")
+  laddersChallenged  LadderChallenge[] @relation("LadderChallenger")
+  laddersDefended    LadderChallenge[] @relation("LadderDefender")
+  trophyAwards       TrophyAward[]
 
   @@index([email])
 }
@@ -332,6 +348,24 @@ model Club {
   isScholastic Boolean  @default(false)
   isPublic     Boolean  @default(true)
   inviteCode   String?  @unique
+  /**
+   * IANA zone, e.g. "Europe/London".
+   *
+   * The weekly club-night rollover runs in this, not in milliseconds.
+   * Adding 7x24h is exact in Nairobi and wrong twice a year in London.
+   */
+  timezone     String   @default("UTC")
+
+  /// --- Ladder rules. Four numbers a secretary can tune, because the
+  /// documented reason club ladders die is rule complexity.
+  /** You may challenge at most this many rungs above you. */
+  ladderRange        Int @default(3)
+  /** Days before the same pair may meet again on the ladder. */
+  ladderCooldownDays Int @default(14)
+  /** Nobody may be challenged more than this in a rolling week. */
+  ladderMaxPerWeek   Int @default(2)
+  /** Decline more than this in a row and the next is auto-accepted. */
+  ladderMaxDeclines  Int @default(2)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -339,6 +373,9 @@ model Club {
   tournaments  Tournament[]
   clubNights   ClubNight[]
   ladder       LadderRung[]
+  ladderChallenges LadderChallenge[]
+  trophies     Trophy[]
+  gradingSubmissions GradingSubmission[]
   homeMatches  TeamMatch[] @relation("TeamMatchHome")
   awayMatches  TeamMatch[] @relation("TeamMatchAway")
   ratings      Rating[]
@@ -367,19 +404,228 @@ model Membership {
   hostFor    String?
   /** Set when the first welcome lands, so nobody is welcomed twice. */
   welcomedAt DateTime?
+  /** When this role was taken up. Service to a club should be visible. */
+  roleSince  DateTime?
 
   @@unique([userId, clubId])
   @@index([clubId, role])
 }
 
+/// A club's year: roughly September to May, closing at an AGM.
+///
+/// Clubs do not run events, they run a season with an arc and a
+/// champion at the end. Everything else in this file reports into one.
 model Season {
   id        String   @id @default(cuid())
   clubId    String
   club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  /** "2026-27", as a club writes it. */
   name      String
   startsAt  DateTime
   endsAt    DateTime
-  tournaments Tournament[]
+  status    SeasonStatus @default(UPCOMING)
+  /** The split between the two halves — pre-Christmas, then to May. */
+  halfwayAt DateTime
+  /** Set at the closing ceremony, never before. */
+  championId String?
+  champion   User?    @relation("SeasonChampion", fields: [championId], references: [id])
+  closedAt   DateTime?
+
+  tournaments  Tournament[]
+  clubNights   ClubNight[]
+  divisions    Division[]
+  trophyAwards TrophyAward[]
+  teamMatches  TeamMatch[]
+  championship Championship?
+  submissions  GradingSubmission[]
+
+  @@index([clubId, status])
+}
+
+/// The play-off that decides the club champion: winner of the autumn
+/// half against winner of the spring half, two games, colours reversed.
+model Championship {
+  id             String    @id @default(cuid())
+  seasonId       String    @unique
+  season         Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  autumnWinnerId String?
+  springWinnerId String?
+  game1Id        String?
+  game2Id        String?
+  /** The same player won both halves, so there is nothing to play off. */
+  outright       Boolean   @default(false)
+  championId     String?
+  decidedAt      DateTime?
+  /** Which rule settled it, recorded so it can be shown and argued with. */
+  decidedBy      String?
+}
+
+/// A named division. Clubs name these after members who served them —
+/// the Homan League, the Dunleavy League — not "Division 1".
+model Division {
+  id            String     @id @default(cuid())
+  seasonId      String
+  season        Season     @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  half          SeasonHalf
+  name          String
+  /** Rank for promotion and relegation. 0 is the top division. */
+  tier          Int
+  promoteCount  Int        @default(2)
+  relegateCount Int        @default(2)
+  createdAt     DateTime   @default(now())
+
+  members  DivisionMember[]
+  fixtures LeagueFixture[]
+
+  @@unique([seasonId, half, tier])
+  @@index([seasonId, half])
+}
+
+model DivisionMember {
+  id         String   @id @default(cuid())
+  divisionId String
+  division   Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /** Where they finished, written at the half. Null while playing. */
+  finalRank  Int?
+  promoted   Boolean  @default(false)
+  relegated  Boolean  @default(false)
+
+  @@unique([divisionId, userId])
+  @@index([userId])
+}
+
+/// All-play-all. One fixture per pair, arranged by the players
+/// themselves a week or so ahead — which is how club leagues actually
+/// run, and why this must not go through the Swiss pairing engine.
+model LeagueFixture {
+  id         String       @id @default(cuid())
+  divisionId String
+  division   Division     @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+  whiteId    String
+  white      User         @relation("FixtureWhite", fields: [whiteId], references: [id])
+  blackId    String
+  black      User         @relation("FixtureBlack", fields: [blackId], references: [id])
+  state      FixtureState @default(SCHEDULED)
+  /** "1-0" | "0-1" | "1/2-1/2". Null until played. */
+  result     String?
+  liveGameId String?      @unique
+  /** End of the half, or a date the organiser set. Drives the nudge. */
+  dueBy      DateTime?
+  arrangedAt DateTime?
+  playedAt   DateTime?
+
+  @@unique([divisionId, whiteId, blackId])
+  @@index([divisionId, state])
+  @@index([whiteId, state])
+  @@index([blackId, state])
+}
+
+model LadderChallenge {
+  id           String               @id @default(cuid())
+  clubId       String
+  club         Club                 @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  challengerId String
+  challenger   User                 @relation("LadderChallenger", fields: [challengerId], references: [id], onDelete: Cascade)
+  defenderId   String
+  defender     User                 @relation("LadderDefender", fields: [defenderId], references: [id], onDelete: Cascade)
+  state        LadderChallengeState @default(OPEN)
+  /** Rungs apart when issued, kept so the rule can be audited later. */
+  rungGap      Int
+  liveGameId   String?
+  createdAt    DateTime             @default(now())
+  expiresAt    DateTime
+  resolvedAt   DateTime?
+
+  @@index([clubId, state])
+  @@index([defenderId, state])
+  @@index([challengerId, state])
+}
+
+/// A named trophy with decades of history behind it.
+model Trophy {
+  id          String   @id @default(cuid())
+  clubId      String
+  club        Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  awards TrophyAward[]
+
+  @@unique([clubId, name])
+}
+
+model TrophyAward {
+  id        String   @id @default(cuid())
+  trophyId  String
+  trophy    Trophy   @relation(fields: [trophyId], references: [id], onDelete: Cascade)
+  /** Null on purpose: a club should be able to type in its roll of
+   *  honour back to 1974, long before GLYPH existed. */
+  seasonId  String?
+  season    Season?  @relation(fields: [seasonId], references: [id])
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /** The season as written on the trophy itself: "1987-88". */
+  year      String
+  note      String?
+  awardedAt DateTime @default(now())
+
+  @@index([trophyId, year])
+  @@index([userId])
+}
+
+model GradingSubmission {
+  id          String          @id @default(cuid())
+  clubId      String
+  club        Club            @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  seasonId    String
+  season      Season          @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  half        SeasonHalf
+  state       SubmissionState @default(DRAFT)
+  gameCount   Int             @default(0)
+  submittedAt DateTime?
+  /** Free text: which federation, and the reference they gave back. */
+  reference   String?
+
+  @@unique([seasonId, half])
+}
+
+enum SeasonStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETE
+}
+
+enum SeasonHalf {
+  AUTUMN
+  SPRING
+}
+
+enum FixtureState {
+  /** Owed, not yet arranged. */
+  SCHEDULED
+  ARRANGED
+  LIVE
+  PLAYED
+  /** One player did not turn up. */
+  DEFAULTED
+  VOID
+}
+
+enum LadderChallengeState {
+  OPEN
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  PLAYED
+}
+
+enum SubmissionState {
+  DRAFT
+  SUBMITTED
+  ACKNOWLEDGED
 }
 
 // ---------------- TOURNAMENTS ----------------
@@ -1064,6 +1310,9 @@ model ClubNight {
    * Cleared when the occurrence rolls forward to next week.
    */
   tournamentId String?
+  /** Which season this night counts toward. */
+  seasonId    String?
+  season      Season?        @relation(fields: [seasonId], references: [id])
   createdAt   DateTime       @default(now())
 
   rsvps ClubNightRsvp[]
@@ -1127,6 +1376,10 @@ model TeamMatch {
   state      TeamMatchState @default(PROPOSED)
   homeScore  Float          @default(0)
   awayScore  Float          @default(0)
+  seasonId   String?
+  season     Season?        @relation(fields: [seasonId], references: [id])
+  /** Board 1 must be the strongest. Checked on submit, recorded here. */
+  boardOrderLocked Boolean  @default(false)
   createdAt  DateTime       @default(now())
 
   boards TeamBoard[]
@@ -1143,6 +1396,12 @@ model TeamBoard {
   homeUserId  String
   awayUserId  String
   liveGameId  String?
+  /** "1-0" | "0-1" | "1/2-1/2" */
+  result      String?
+  /** Which club each player turned out for. Members may hold several,
+   *  and should not have to leave one to play for another. */
+  homeRepresentingClubId String?
+  awayRepresentingClubId String?
 
   @@unique([teamMatchId, boardNumber])
 }

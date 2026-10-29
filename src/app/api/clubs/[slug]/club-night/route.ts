@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { canRunCompetitions } from "@/lib/services/officers";
 import { requireUser } from "@/lib/auth";
+import { addWeekLocal, DEFAULT_TZ } from "@engine/time/recurrence";
 
 /**
  * Set or change the club's weekly night. One per club: it is a rhythm,
@@ -27,10 +29,15 @@ const Body = z.object({
   active: z.boolean().default(true),
 });
 
-/** Never schedule into the past; roll forward a week until it is ahead. */
-function notInThePast(when: Date): Date {
-  const next = new Date(when);
-  while (next.getTime() <= Date.now()) next.setUTCDate(next.getUTCDate() + 7);
+/**
+ * Never schedule into the past; roll forward a week until it is ahead —
+ * in the club's own timezone, so a clock change does not move the hour.
+ */
+function notInThePast(when: Date, timeZone: string): Date {
+  let next = new Date(when);
+  for (let i = 0; i < 60 && next.getTime() <= Date.now(); i++) {
+    next = addWeekLocal(next, timeZone);
+  }
   return next;
 }
 
@@ -38,14 +45,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   const userId = await requireUser();
   const { slug } = await params;
 
-  const club = await prisma.club.findUnique({ where: { slug }, select: { id: true } });
+  const club = await prisma.club.findUnique({
+    where: { slug },
+    select: { id: true, timezone: true },
+  });
   if (!club) return NextResponse.json({ error: "no_such_club" }, { status: 404 });
 
   const member = await prisma.membership.findFirst({
     where: { userId, clubId: club.id, active: true },
     select: { role: true },
   });
-  if (!member || !["OWNER", "ADMIN", "ORGANIZER"].includes(member.role)) {
+  if (!canRunCompetitions(member?.role)) {
     return NextResponse.json({ error: "organizers_only" }, { status: 403 });
   }
 
@@ -60,7 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     );
   }
 
-  const startsAt = notInThePast(new Date(body.startsAt));
+  const startsAt = notInThePast(new Date(body.startsAt), club.timezone || DEFAULT_TZ);
 
   const existing = await prisma.clubNight.findFirst({ where: { clubId: club.id } });
 
@@ -110,7 +120,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ s
     where: { userId, clubId: club.id, active: true },
     select: { role: true },
   });
-  if (!member || !["OWNER", "ADMIN", "ORGANIZER"].includes(member.role)) {
+  if (!canRunCompetitions(member?.role)) {
     return NextResponse.json({ error: "organizers_only" }, { status: 403 });
   }
 

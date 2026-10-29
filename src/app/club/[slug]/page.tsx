@@ -13,6 +13,13 @@ import { firstWeekFor, HOST_DAYS } from "@/lib/services/onboarding";
 import { ClubNightCard } from "@/components/club/ClubNightCard";
 import { ClubNightForm } from "@/components/club/ClubNightForm";
 import { clubNightFor } from "@/lib/services/clubnight";
+import { currentSeason, seasonTable, halfAt } from "@/lib/services/season";
+import { leagueTable, gamesOwed } from "@/lib/services/league";
+import { SeasonHome } from "@/components/season/SeasonHome";
+import { LeagueTable } from "@/components/season/LeagueTable";
+import { GamesOwed } from "@/components/season/GamesOwed";
+import { OrganiserPanel } from "@/components/season/OrganiserPanel";
+import { canRunCompetitions, canAwardHonours } from "@/lib/services/officers";
 import { displayRating } from "@/lib/services/ratings";
 import { parseId, label } from "@engine/game/timeControls";
 
@@ -94,7 +101,8 @@ export default async function ClubPage({
   );
 
   const isMember = Boolean(membership);
-  const organiser = membership?.role === "OWNER" || membership?.role === "ADMIN" || membership?.role === "ORGANIZER";
+  const organiser = canRunCompetitions(membership?.role);
+  const canClose = canAwardHonours(membership?.role);
 
   // The newcomer's own view, and the organizer's view of newcomers.
   const [firstWeek, newThisWeek, clubNight] = await Promise.all([
@@ -112,6 +120,45 @@ export default async function ClubPage({
       : Promise.resolve([]),
     clubNightFor(club.id, userId),
   ]);
+
+  // ---- The season, and everything that reports into it ----
+  const season = await currentSeason(club.id);
+  const half = season ? halfAt(season) : null;
+
+  const [seasonRows, divisions] = season
+    ? await Promise.all([
+        seasonTable(season.id),
+        prisma.division.findMany({
+          where: { seasonId: season.id, half: half! },
+          orderBy: { tier: "asc" },
+        }),
+      ])
+    : [[], []];
+
+  // One table per division, plus the fixtures this member still owes.
+  const tables = await Promise.all(divisions.map((d) => leagueTable(d.id)));
+  const yourDivision = userId
+    ? divisions.find((d, i) => tables[i].some((r) => r.userId === userId))
+    : undefined;
+  const owed = yourDivision && userId ? await gamesOwed(yourDivision.id, userId) : [];
+
+  const championshipRow = season
+    ? await prisma.championship.findUnique({ where: { seasonId: season.id } })
+    : null;
+  const nameOf = (id: string | null | undefined) =>
+    id ? (seasonRows.find((r) => r.userId === id)?.name ?? null) : null;
+
+  // Everyone an officer could place in a division, strongest rating first.
+  const allocatable = organiser
+    ? members.map((m) => ({
+        userId: m.userId,
+        name: m.user.profile?.fullName ?? "A member",
+        rating:
+          m.user.glyphRatings?.find((r) => r.category === "RAPID")?.rating != null
+            ? Math.round(m.user.glyphRatings.find((r) => r.category === "RAPID")!.rating)
+            : null,
+      }))
+    : [];
 
   // Which of them have actually played — the ones who have not are the
   // people a club loses, and they are the only ones worth chasing.
@@ -205,6 +252,89 @@ export default async function ClubPage({
           </p>
         )}
       </section>
+
+      {/* The officer's drawer: open a season, name the divisions, place
+          people, settle a half. Collapsed, because a club page is for
+          members and the machinery belongs out of the way. */}
+      {organiser && (
+        <OrganiserPanel
+          clubSlug={slug}
+          season={
+            season
+              ? {
+                  id: season.id,
+                  name: season.name,
+                  startsAt: season.startsAt.toISOString(),
+                  halfwayAt: season.halfwayAt.toISOString(),
+                  endsAt: season.endsAt.toISOString(),
+                }
+              : null
+          }
+          half={half}
+          members={allocatable}
+          hasDivisions={divisions.length > 0}
+          canClose={canClose}
+        />
+      )}
+
+      {/* Where the club is in its year. Above the weekly night because a
+          season is the frame everything else sits inside. */}
+      {season && (
+        <SeasonHome
+          name={season.name}
+          startsAt={season.startsAt}
+          halfwayAt={season.halfwayAt}
+          endsAt={season.endsAt}
+          half={half!}
+          table={seasonRows}
+          youId={userId}
+          championship={
+            championshipRow
+              ? {
+                  autumnWinnerName: nameOf(championshipRow.autumnWinnerId),
+                  springWinnerName: nameOf(championshipRow.springWinnerId),
+                  outright: championshipRow.outright,
+                  championName: nameOf(championshipRow.championId),
+                  decidedBy: championshipRow.decidedBy,
+                }
+              : null
+          }
+        />
+      )}
+
+      {/* What you still owe. Before the tables, because it is the only
+          part of a league a member has to act on. */}
+      {isMember && yourDivision && owed.length > 0 && (
+        <GamesOwed
+          divisionName={yourDivision.name}
+          fixtures={owed.map((f) => ({
+            ...f,
+            dueBy: f.dueBy ? f.dueBy.toISOString() : null,
+            arrangedAt: f.arrangedAt ? f.arrangedAt.toISOString() : null,
+          }))}
+        />
+      )}
+
+      {/* The noticeboard. In a real club this is paper on a wall and it
+          is checked constantly, so it is always current and always here. */}
+      {divisions.length > 0 && (
+        <section style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}>
+          <h2 className="section-label">
+            {half === "AUTUMN" ? "Autumn" : "Spring"} league
+          </h2>
+          {divisions.map((d, i) => (
+            <LeagueTable
+              key={d.id}
+              name={d.name}
+              rows={tables[i]}
+              youId={userId}
+              promoteCount={d.promoteCount}
+              relegateCount={d.relegateCount}
+              showMovement={divisions.length > 1}
+            />
+          ))}
+        </section>
+      )}
 
       {/* The weekly night, and — for organisers — the controls to set it.
           A club with no night gets a prompt rather than silence, because

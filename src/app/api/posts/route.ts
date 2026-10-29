@@ -36,7 +36,13 @@ export async function POST(req: NextRequest) {
 
   const post = await prisma.post.create({
     data: { ...body, authorId: userId },
-    include: { author: { include: { profile: true } } },
+    // Not `include`: that returns every User scalar, so the author's own
+    // email and password hash came back in the 201 body. Your own hash in
+    // your own browser is not a disclosure, but it has no business in a
+    // response, a log, or a devtools panel.
+    include: {
+      author: { select: { id: true, profile: { select: { fullName: true, handle: true } } } },
+    },
   });
   await touchStreak(userId);
   await invalidate("feed:");

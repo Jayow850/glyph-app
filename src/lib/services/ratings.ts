@@ -182,4 +182,14 @@ export async function settleIfFinished(gameId: string, status: string) {
   } catch {
     /* likewise for the wallchart */
   }
+
+  try {
+    // No-op unless this game was a league fixture. Playing a league
+    // game on GLYPH is submitting it; there is no second step where
+    // somebody has to remember to report the result.
+    const { settleLeagueFixture } = await import("./league");
+    await settleLeagueFixture(gameId);
+  } catch {
+    /* and likewise for the league table */
+  }
 }

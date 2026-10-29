@@ -26,14 +26,19 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     orderBy: { createdAt: "desc" },
     take: 30,
     ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    // `include` on author would return every User scalar — email and
+    // passwordHash among them — and this route has no auth gate. Name the
+    // fields instead. CommentThread reads only the author's fullName.
     include: {
-      author: { include: { profile: true } },
+      author: { select: { id: true, profile: { select: { fullName: true, handle: true } } } },
       reactions: { select: { kind: true } },
       replies: {
         where: { deletedAt: null },
         take: 3,
         orderBy: { createdAt: "asc" },
-        include: { author: { include: { profile: true } } },
+        include: {
+          author: { select: { id: true, profile: { select: { fullName: true, handle: true } } } },
+        },
       },
       _count: { select: { replies: true } },
     },

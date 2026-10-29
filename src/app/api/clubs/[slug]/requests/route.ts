@@ -29,7 +29,16 @@ export async function GET(_: NextRequest, { params }: { params: Promise<{ slug: 
   await requireRole(userId, club.id, can.manageClub);
   const queue = await prisma.clubJoinRequest.findMany({
     where: { clubId: club.id, status: "PENDING" },
-    include: { user: { include: { profile: true } } },
+    // An organiser reviewing applicants needs their name, not their
+    // password hash. `include` on a user relation returns both.
+    include: {
+      user: {
+        select: {
+          id: true,
+          profile: { select: { fullName: true, handle: true, country: true, title: true } },
+        },
+      },
+    },
   });
   return NextResponse.json(queue);
 }

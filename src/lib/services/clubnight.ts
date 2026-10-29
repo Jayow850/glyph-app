@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { notify } from "@/lib/services/notifications";
 import { pairNextRound, standings, finalizeTournament } from "@/lib/services/tournament";
+import { nextWeeklyOccurrence, DEFAULT_TZ } from "@engine/time/recurrence";
 
 /**
  * Club night — the weekly rhythm.
@@ -24,13 +25,16 @@ export const COUNTDOWN_MS = 24 * 60 * 60 * 1000;
 /** Someone who RSVP'd but never checked in is not kept waiting for. */
 export const CHECKIN_GRACE_MS = 10 * 60 * 1000;
 
-/** The next occurrence of a weekly slot, from a given moment. */
-export function nextOccurrence(from: Date, startsAt: Date): Date {
-  const next = new Date(startsAt);
-  while (next.getTime() <= from.getTime()) {
-    next.setDate(next.getDate() + 7);
-  }
-  return next;
+/**
+ * The next occurrence of a weekly slot, in the club's own timezone.
+ *
+ * Adding 7x24h is exact in Nairobi and wrong twice a year in London:
+ * a 19:30 night becomes 18:30 the week after the October change and
+ * members arrive to a game already in progress. See lib/time/recurrence.ts,
+ * which has the tests.
+ */
+export function nextOccurrence(from: Date, startsAt: Date, timeZone = DEFAULT_TZ): Date {
+  return nextWeeklyOccurrence(from, startsAt, timeZone);
 }
 
 export interface ClubNightView {
@@ -121,9 +125,15 @@ export async function startClubNight(clubNightId: string) {
   const when = night.startsAt;
   const name = `${night.club.name} club night — ${when.toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
 
+  const season = await prisma.season.findFirst({
+    where: { clubId: night.clubId, status: "ACTIVE" },
+    select: { id: true },
+  });
+
   const tournament = await prisma.tournament.create({
     data: {
       clubId: night.clubId,
+      seasonId: season?.id,
       name,
       format: "SWISS",
       totalRounds: night.rounds,
@@ -141,7 +151,7 @@ export async function startClubNight(clubNightId: string) {
 
   await prisma.clubNight.update({
     where: { id: clubNightId },
-    data: { state: "LIVE", tournamentId: tournament.id },
+    data: { state: "LIVE", tournamentId: tournament.id, seasonId: season?.id },
   });
 
   return { tournamentId: tournament.id, seated: players.length };
@@ -161,6 +171,7 @@ export async function finishClubNight(clubNightId: string) {
     include: { club: true },
   });
   if (!night || night.state !== "LIVE" || !night.tournamentId) return null;
+  const tz = night.club.timezone || DEFAULT_TZ;
 
   const table = await standings(night.tournamentId);
   await finalizeTournament(night.tournamentId).catch(() => {});
@@ -224,7 +235,7 @@ export async function finishClubNight(clubNightId: string) {
     data: {
       state: "SCHEDULED",
       tournamentId: null,
-      startsAt: nextOccurrence(new Date(), night.startsAt),
+      startsAt: nextOccurrence(new Date(), night.startsAt, tz),
     },
   });
 

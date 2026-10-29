@@ -13,7 +13,9 @@
     "test:engine": "node --experimental-strip-types lib/test-tournament.ts",
     "test:rating": "node --experimental-strip-types lib/test-rating.ts",
     "test:board": "node --experimental-strip-types lib/test-board.ts",
-    "test:replay": "node --experimental-strip-types lib/test-replay.ts"
+    "test:replay": "node --experimental-strip-types lib/test-replay.ts",
+    "test:api-shape": "node --experimental-strip-types lib/test-api-shape.ts",
+    "test:time": "node --experimental-strip-types lib/test-time.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.6.0",
