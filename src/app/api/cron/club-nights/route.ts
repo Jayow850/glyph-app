@@ -15,8 +15,21 @@ import { startClubNight, finishClubNight } from "@/lib/services/clubnight";
  * delivery is best-effort.
  */
 
-/** Don't start a night that has been sitting unstarted for hours. */
-const STALE_MS = 2 * 60 * 60 * 1000;
+/**
+ * Don't start a night that has been sitting unstarted too long.
+ *
+ * Sized to the sweep interval. On Vercel's Hobby plan a cron may only
+ * run once a day, so a night due at 19:30 is already eight hours old by
+ * the time the 02:00 sweep reaches it — with a two-hour window nothing
+ * would ever start. A day's grace lets the daily sweep do the half of
+ * the job it can: closing out nights that finished and never got tidied.
+ *
+ * Auto-START at the scheduled minute genuinely needs a five-minute
+ * sweep, and that needs Pro. Until then the organiser's "Start now"
+ * button is the real mechanism, and that is honest rather than a
+ * schedule that silently does nothing.
+ */
+const STALE_MS = 25 * 60 * 60 * 1000;
 
 /** Rounds take time; close a night out only well after it began. */
 const FINISH_AFTER_MS = 6 * 60 * 60 * 1000;
