@@ -11,6 +11,7 @@ import { FirstWeekCard } from "@/components/club/FirstWeekCard";
 import { WelcomeButton } from "@/components/club/WelcomeButton";
 import { firstWeekFor, HOST_DAYS } from "@/lib/services/onboarding";
 import { ClubNightCard } from "@/components/club/ClubNightCard";
+import { ClubNightForm } from "@/components/club/ClubNightForm";
 import { clubNightFor } from "@/lib/services/clubnight";
 import { displayRating } from "@/lib/services/ratings";
 import { parseId, label } from "@engine/game/timeControls";
@@ -205,23 +206,45 @@ export default async function ClubPage({
         )}
       </section>
 
-      {clubNight && (
-        <ClubNightCard
-          id={clubNight.id}
-          clubSlug={slug}
-          clubName={club.name}
-          startsAt={clubNight.startsAt.toISOString()}
-          timeControl={clubNight.timeControl}
-          rounds={clubNight.rounds}
-          state={clubNight.state}
-          tournamentId={clubNight.tournamentId}
-          going={clubNight.going}
-          maybe={clubNight.maybe}
-          yourState={isMember ? clubNight.yourState : null}
-          canRsvp={isMember}
-          startable={clubNight.startable}
-          canStart={Boolean(organiser)}
-        />
+      {/* The weekly night, and — for organisers — the controls to set it.
+          A club with no night gets a prompt rather than silence, because
+          an empty space teaches nobody that the feature exists. */}
+      {(clubNight || organiser) && (
+        <section style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}>
+          {clubNight && (
+            <ClubNightCard
+              id={clubNight.id}
+              clubSlug={slug}
+              clubName={club.name}
+              startsAt={clubNight.startsAt.toISOString()}
+              timeControl={clubNight.timeControl}
+              rounds={clubNight.rounds}
+              state={clubNight.state}
+              tournamentId={clubNight.tournamentId}
+              going={clubNight.going}
+              maybe={clubNight.maybe}
+              yourState={isMember ? clubNight.yourState : null}
+              canRsvp={isMember}
+              startable={clubNight.startable}
+              canStart={Boolean(organiser)}
+            />
+          )}
+          {organiser && (
+            <ClubNightForm
+              clubSlug={slug}
+              initial={
+                clubNight
+                  ? {
+                      dayOfWeek: clubNight.dayOfWeek,
+                      startsAt: clubNight.startsAt.toISOString(),
+                      timeControl: clubNight.timeControl,
+                      rounds: clubNight.rounds,
+                    }
+                  : null
+              }
+            />
+          )}
+        </section>
       )}
 
       {firstWeek && !firstWeek.done && (

@@ -37,6 +37,7 @@ export interface ClubNightView {
   id: string;
   clubSlug: string;
   clubName: string;
+  dayOfWeek: number;
   startsAt: Date;
   timeControl: string;
   rounds: number;
@@ -70,6 +71,7 @@ export async function clubNightFor(clubId: string, userId: string | null): Promi
     id: night.id,
     clubSlug: night.club.slug,
     clubName: night.club.name,
+    dayOfWeek: night.dayOfWeek,
     startsAt: night.startsAt,
     timeControl: night.timeControl,
     rounds: night.rounds,

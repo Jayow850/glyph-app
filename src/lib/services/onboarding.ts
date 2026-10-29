@@ -159,9 +159,13 @@ export interface FirstWeek {
 export async function firstWeekFor(clubId: string, userId: string): Promise<FirstWeek | null> {
   const membership = await prisma.membership.findFirst({
     where: { clubId, userId, active: true },
-    select: { joinedAt: true, hostFor: true },
+    select: { joinedAt: true, hostFor: true, role: true },
   });
   if (!membership) return null;
+
+  // Whoever created the club does not need telling to play their first
+  // game in it. The checklist is for arrivals, not for the host.
+  if (membership.role === "OWNER" || membership.role === "ADMIN") return null;
 
   const days = Math.floor((Date.now() - membership.joinedAt.getTime()) / 86_400_000);
   if (days >= HOST_DAYS) return null;
