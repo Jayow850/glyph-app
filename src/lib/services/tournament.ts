@@ -88,9 +88,26 @@ export async function pairNextRound(tournamentId: string) {
           incrementMs,
           lastMoveAt: new Date(),
           clockStarted: false,
-          // The tournament runs its own rating with its own K-factor, so
-          // these boards leave the open GLYPH ladder alone.
-          rated: false,
+          /**
+           * Tournament boards move the platform rating too.
+           *
+           * They used to be `rated: false`, on the reasoning that a
+           * tournament runs its own Elo with its own K-factor. In
+           * practice that meant a member could play ten club nights
+           * and watch the number on their profile never move, because
+           * the only rating the app shows anywhere is the Glicko-2 one.
+           * The per-club Elo still updates alongside it — they measure
+           * different things — but the rating people actually see now
+           * reflects the games they actually played.
+           *
+           * It also fills whiteRatingBefore/blackRatingBefore, which
+           * only settleRatings writes; without them the club-night
+           * recap could never work out the biggest upset.
+           *
+           * An organiser who marks a tournament unrated still gets an
+           * unrated tournament.
+           */
+          rated: t.isRated,
         },
       });
       liveGameId = game.id;
