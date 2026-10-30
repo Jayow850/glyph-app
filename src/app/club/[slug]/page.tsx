@@ -498,9 +498,11 @@ export default async function ClubPage({
         </section>
       )}
 
-      {/* The trophy cabinet. Hidden from non-members only when there is
-          nothing in it and nobody present who could fill it. */}
-      {(trophies.length > 0 || canClose) && (
+      {/* The trophy cabinet. An empty one still shows to members, the
+          way the ladder does: gating the empty state on who may fill it
+          meant a member saw no Trophies heading at all and no way to
+          know the feature existed. */}
+      {(trophies.length > 0 || isMember) && (
         <section style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}>
           <h2 className="section-label">Trophies</h2>
           <TrophyCabinet clubSlug={club.slug} trophies={trophies} canAdd={canClose} />

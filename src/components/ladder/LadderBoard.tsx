@@ -142,7 +142,11 @@ export function LadderBoard({
                     className="t-rowmeta"
                     style={{ display: "block", overflowWrap: "break-word" }}
                   >
-                    {r.openChallenge.role === "defender" ? "challenged by " : "challenging "}
+                    {r.openChallenge.state === "ACCEPTED"
+                      ? "playing "
+                      : r.openChallenge.role === "defender"
+                        ? "challenged by "
+                        : "challenging "}
                     {r.openChallenge.otherName}
                   </span>
                 )}
@@ -167,7 +171,10 @@ export function LadderBoard({
                 </button>
               )}
 
-              {isMe && mine?.openChallenge?.role === "defender" && (
+              {/* Only while it is still OPEN. An ACCEPTED challenge
+                  has nothing left to accept, and offering the button
+                  anyway sent the member into a server refusal. */}
+              {isMe && mine?.openChallenge?.role === "defender" && mine.openChallenge.state === "OPEN" && (
                 <span style={{ display: "flex", gap: 6, flexShrink: 0 }}>
                   <button
                     onClick={() =>
@@ -205,6 +212,63 @@ export function LadderBoard({
           );
         })}
       </div>
+
+      {/* The game has been agreed. This is the step that was missing:
+          two people accepted a challenge and the board gave them
+          nowhere to say what happened, so the ladder never moved. */}
+      {mine?.openChallenge?.state === "ACCEPTED" && (
+        <div
+          style={{
+            background: "var(--surface)", border: "1px solid var(--border-gold)",
+            borderRadius: "var(--r-lg)", padding: "var(--s3) var(--s4)",
+          }}
+        >
+          <p className="t-row" style={{ marginBottom: 2 }}>
+            You are playing {mine.openChallenge.otherName}
+          </p>
+          <p className="t-rowmeta" style={{ marginBottom: "var(--s3)" }}>
+            {mine.openChallenge.role === "challenger"
+              ? "Win and you take their rung. A draw leaves the ladder as it is."
+              : "Hold the rung by winning or drawing."}
+          </p>
+          <div style={{ display: "flex", gap: "var(--s2)", flexWrap: "wrap" }}>
+            <ResultButton
+              label="I won"
+              primary
+              busy={busy !== null}
+              onClick={() =>
+                post(
+                  { action: "result", winnerId: meId },
+                  `/api/ladder/challenges/${mine.openChallenge!.id}`,
+                  "PATCH",
+                )
+              }
+            />
+            <ResultButton
+              label="I lost"
+              busy={busy !== null}
+              onClick={() =>
+                post(
+                  { action: "result", winnerId: mine.openChallenge!.otherId },
+                  `/api/ladder/challenges/${mine.openChallenge!.id}`,
+                  "PATCH",
+                )
+              }
+            />
+            <ResultButton
+              label="Draw"
+              busy={busy !== null}
+              onClick={() =>
+                post(
+                  { action: "result", winnerId: null },
+                  `/api/ladder/challenges/${mine.openChallenge!.id}`,
+                  "PATCH",
+                )
+              }
+            />
+          </div>
+        </div>
+      )}
 
       {error && (
         <p className="t-secondary" role="alert" style={{ color: "var(--danger)" }}>
@@ -247,6 +311,36 @@ function NameWithFlag({ name, country }: { name: string; country: string | null 
         </span>
       </span>
     </>
+  );
+}
+
+function ResultButton({
+  label,
+  onClick,
+  busy,
+  primary = false,
+}: {
+  label: string;
+  onClick: () => void;
+  busy: boolean;
+  primary?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={busy}
+      className="press"
+      style={{
+        minHeight: 38, padding: "0 14px", borderRadius: "var(--r-full)",
+        cursor: busy ? "default" : "pointer", opacity: busy ? 0.5 : 1,
+        fontSize: "var(--t-secondary)", fontWeight: 600, whiteSpace: "nowrap",
+        border: primary ? "none" : "1px solid var(--border)",
+        background: primary ? "var(--gold)" : "transparent",
+        color: primary ? "var(--gold-ink)" : "var(--text-muted)",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 

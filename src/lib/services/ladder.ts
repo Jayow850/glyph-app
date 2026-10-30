@@ -34,8 +34,20 @@ export interface Rung {
   handle: string | null;
   country: string | null;
   movedAt: Date;
-  /** An open challenge this member is involved in, either way. */
-  openChallenge: { id: string; role: "challenger" | "defender"; otherName: string } | null;
+  /**
+   * A live challenge this member is in, either way.
+   *
+   * `state` matters: an ACCEPTED challenge is still live, but there is
+   * nothing left to accept. Without it the board offered Accept on an
+   * already-accepted challenge and the server rightly refused.
+   */
+  openChallenge: {
+    id: string;
+    role: "challenger" | "defender";
+    state: "OPEN" | "ACCEPTED";
+    otherName: string;
+    otherId: string;
+  } | null;
 }
 
 export interface LadderRules {
@@ -117,7 +129,9 @@ export async function ladder(clubId: string): Promise<Rung[]> {
         ? {
             id: c.id,
             role: asChallenger ? ("challenger" as const) : ("defender" as const),
+            state: c.state === "ACCEPTED" ? ("ACCEPTED" as const) : ("OPEN" as const),
             otherName: asChallenger ? nameOf(c, "defender") : nameOf(c, "challenger"),
+            otherId: asChallenger ? c.defenderId : c.challengerId,
           }
         : null,
     };
