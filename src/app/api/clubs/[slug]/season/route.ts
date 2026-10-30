@@ -51,6 +51,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     return NextResponse.json({ id: season.id, name: season.name }, { status: 201 });
   } catch (e) {
     const message = e instanceof Error ? e.message : "failed";
-    return NextResponse.json({ error: message }, { status: message === "season_dates_out_of_order" ? 400 : 500 });
+    const SAYABLE: Record<string, string> = {
+      season_dates_out_of_order: "The halfway date has to sit between the start and the end.",
+      season_too_short: "A season needs at least four weeks — it runs in two halves.",
+    };
+    const said = SAYABLE[message];
+    return NextResponse.json({ error: said ?? message }, { status: said ? 400 : 500 });
   }
 }

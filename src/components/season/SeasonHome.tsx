@@ -30,9 +30,14 @@ export function SeasonHome({
   name, startsAt, halfwayAt, endsAt, half, table, youId, championship,
 }: SeasonHomeProps) {
   const now = Date.now();
-  const total = endsAt.getTime() - startsAt.getTime();
+  // Guarded: a zero-length season divides by zero here and every
+  // percentage downstream becomes NaN, which is what made the bar
+  // render as a meaningless full or empty strip.
+  const total = Math.max(1, endsAt.getTime() - startsAt.getTime());
   const done = Math.min(1, Math.max(0, (now - startsAt.getTime()) / total));
-  const halfMark = (halfwayAt.getTime() - startsAt.getTime()) / total;
+  const halfMark = Math.min(1, Math.max(0, (halfwayAt.getTime() - startsAt.getTime()) / total));
+  /** Under 90 days is not a club year; label its ends by day. */
+  const shortSeason = total < 90 * 86_400_000;
 
   const played = table.filter((r) => r.played > 0);
   const leader = played[0];
@@ -80,8 +85,8 @@ export function SeasonHome({
           />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6 }}>
-          <span className="t-caption">{month(startsAt)}</span>
-          <span className="t-caption">{month(endsAt)}</span>
+          <span className="t-caption">{endLabel(startsAt, shortSeason)}</span>
+          <span className="t-caption">{endLabel(endsAt, shortSeason)}</span>
         </div>
       </div>
 
@@ -112,35 +117,58 @@ export function SeasonHome({
         </div>
       )}
 
-      {/* Three numbers worth a glance. More than three and nobody reads any. */}
-      <div
-        style={{
-          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))",
-          borderTop: "1px solid var(--border)",
-        }}
-      >
-        <Stat label="Leading" value={leader?.name.split(/\s+/)[0] ?? "—"} sub={leader ? `${fmt(leader.points)} pts` : undefined} />
-        <Stat
-          label="Best attendance"
-          value={bestAttendance?.attendance ? bestAttendance.name.split(/\s+/)[0] : "—"}
-          sub={bestAttendance?.attendance ? `${bestAttendance.attendance} nights` : undefined}
-        />
-        <Stat
-          label="You"
-          value={you && you.played > 0 ? `${fmt(you.points)}/${you.played}` : "—"}
-          sub={you?.performance ? `${you.performance} perf` : you && you.played === 0 ? "no games yet" : undefined}
-        />
-      </div>
-
-      {played.length === 0 && (
+      {/* Before a ball is kicked there is nothing to lead and nothing
+          to attend, so three dashes under three labels is not an empty
+          state — it is the same absence printed three times. Say what
+          happens next instead, and bring the numbers in the moment
+          they mean something. */}
+      {played.length === 0 ? (
+        <div style={{ padding: "var(--s4)", borderTop: "1px solid var(--border)" }}>
+          <p className="t-row" style={{ marginBottom: 4 }}>
+            The season is open. Nobody has played yet.
+          </p>
+          <p className="t-rowmeta">
+            {table.length > 0 ? (
+              <>
+                <span className="digits">{table.length}</span>{" "}
+                {table.length === 1 ? "member is" : "members are"} in it. The table fills
+                in as games are played — at a club night, or by arranging a league game
+                with somebody you owe one to.
+              </>
+            ) : (
+              "Place members into divisions and the table will start filling in."
+            )}
+          </p>
+        </div>
+      ) : (
+        /* Three numbers worth a glance. More than three and nobody reads any. */
         <div
           style={{
-            display: "flex", alignItems: "center", gap: "var(--s2)",
-            padding: "var(--s3) var(--s4)", borderTop: "1px solid var(--border)",
+            display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(100px, 1fr))",
+            borderTop: "1px solid var(--border)",
           }}
         >
-          <Icon name="hourglass" size={14} />
-          <p className="t-rowmeta">No games played yet. The season starts when somebody plays one.</p>
+          <Stat
+            label="Leading"
+            value={leader?.name.split(/\s+/)[0] ?? "—"}
+            sub={leader ? `${fmt(leader.points)} pts` : undefined}
+          />
+          <Stat
+            label="Best attendance"
+            value={bestAttendance?.attendance ? bestAttendance.name.split(/\s+/)[0] : "—"}
+            sub={bestAttendance?.attendance ? `${bestAttendance.attendance} nights` : undefined}
+          />
+          <Stat
+            label="You"
+            value={you && you.played > 0 ? `${fmt(you.points)}/${you.played}` : "—"}
+            sub={
+              you?.performance
+                ? `${you.performance} perf`
+                : you && you.played === 0
+                  ? "no games yet"
+                  : undefined
+            }
+          />
         </div>
       )}
     </div>
@@ -169,6 +197,20 @@ function fmt(n: number) {
   return whole === 0 ? "½" : `${whole}½`;
 }
 
-function month(d: Date) {
-  return d.toLocaleDateString(undefined, { month: "short", year: "2-digit" });
+/**
+ * A date on the end of the season bar.
+ *
+ * This was `{month:"short", year:"2-digit"}`, which renders November
+ * 2026 as "Nov 26" — indistinguishable from the 26th of November, and
+ * identical at both ends of any season beginning and ending in the
+ * same month. A season running 1–26 November read "Nov 26 → Nov 26",
+ * which looks like corrupt data and is not.
+ *
+ * Seasons shorter than a season gets the day; a real September-to-May
+ * year gets the year. Neither can be misread as the other.
+ */
+function endLabel(d: Date, showDay: boolean) {
+  return showDay
+    ? d.toLocaleDateString(undefined, { day: "numeric", month: "short" })
+    : d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }

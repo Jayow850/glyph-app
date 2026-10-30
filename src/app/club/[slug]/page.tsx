@@ -45,6 +45,31 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 const ONLINE_MS = 3 * 60 * 1000;
 
 /**
+ * Anyone whose membership predates this is a founding member.
+ *
+ * A club and its first roster are written in one transaction, so their
+ * joinedAt values land milliseconds apart. Two minutes is far wider
+ * than that gap and far narrower than a real person joining later.
+ */
+const FOUNDING_MS = 2 * 60 * 1000;
+
+/**
+ * Drop the club's own name from a tournament title.
+ *
+ * Club nights are named "<Club> club night — 30 Oct" so they read
+ * correctly in a global list. Inside the club's own page the prefix is
+ * redundant, and at 360px it ate the whole row and truncated the date,
+ * which is the only part that distinguishes one club night from the
+ * next. Stripped on render, so the stored name stays useful elsewhere.
+ */
+function stripClubName(title: string, clubName: string) {
+  const trimmed = title.startsWith(clubName) ? title.slice(clubName.length) : title;
+  const cleaned = trimmed.replace(/^[\s—–-]+/, "").trim();
+  if (!cleaned) return title;
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+}
+
+/**
  * A club.
  *
  * The previous version was styled with classes from a design system
@@ -95,8 +120,18 @@ export default async function ClubPage({
   const memberIds = members.map((m) => m.userId);
 
   // Games being played right now between members of this club.
+  //
+  // `status: ACTIVE` alone is not "live": a game is ACTIVE from the
+  // moment it is created, so three boards nobody ever moved on were
+  // being counted and shown at move 0. A game is live once a move has
+  // been played on it and it has not finished.
   const liveGames = await prisma.liveGame.findMany({
-    where: { status: "ACTIVE", whiteId: { in: memberIds }, blackId: { in: memberIds } },
+    where: {
+      status: "ACTIVE",
+      sans: { isEmpty: false },
+      whiteId: { in: memberIds },
+      blackId: { in: memberIds },
+    },
     include: { white: { include: { profile: true } }, black: { include: { profile: true } } },
     orderBy: { lastMoveAt: "desc" },
     take: 6,
@@ -118,7 +153,17 @@ export default async function ClubPage({
           where: {
             clubId: club.id,
             active: true,
-            joinedAt: { gte: new Date(Date.now() - HOST_DAYS * 86_400_000) },
+            joinedAt: {
+              gte: new Date(Date.now() - HOST_DAYS * 86_400_000),
+              // Everyone present when the club was created — the owner
+              // and any seeded roster — joined in the same instant as
+              // the club itself. They are the founding members, not
+              // newcomers to be welcomed, and listing all eight of them
+              // was the whole of this bug.
+              gt: new Date(club.createdAt.getTime() + FOUNDING_MS),
+            },
+            // An owner welcoming themselves is nonsense in any case.
+            role: { notIn: ["OWNER", "PRESIDENT"] },
           },
           include: { user: { include: { profile: true } } },
           orderBy: { joinedAt: "desc" },
@@ -176,11 +221,18 @@ export default async function ClubPage({
   // Which of them have actually played — the ones who have not are the
   // people a club loses, and they are the only ones worth chasing.
   const newIds = newThisWeek.map((m) => m.userId);
+  // Same trap as the live-games query: a game that exists is not a
+  // game that was played, and counting created-but-untouched boards
+  // marked every newcomer "has played" — which switched off the one
+  // signal this section exists to give.
   const playedIds = new Set(
     newIds.length
       ? (
           await prisma.liveGame.findMany({
-            where: { OR: [{ whiteId: { in: newIds } }, { blackId: { in: newIds } }] },
+            where: {
+              sans: { isEmpty: false },
+              OR: [{ whiteId: { in: newIds } }, { blackId: { in: newIds } }],
+            },
             select: { whiteId: true, blackId: true },
           })
         ).flatMap((g) => [g.whiteId, g.blackId])
@@ -194,6 +246,12 @@ export default async function ClubPage({
       })
     : [];
   const welcomePostFor = new Map(welcomePosts.map((p) => [p.subjectUserId, p]));
+
+  // The newcomers who actually need something doing: nobody has
+  // welcomed them, or they have not played yet.
+  const needWelcome = newThisWeek.filter(
+    (m) => !welcomePostFor.get(m.userId) || !playedIds.has(m.userId),
+  );
 
   const host = firstWeek?.hostId
     ? members.find((m) => m.userId === firstWeek.hostId)?.user ?? null
@@ -429,12 +487,15 @@ export default async function ClubPage({
         </section>
       )}
 
-      {/* Organizers only: who arrived, and who nobody has spoken to. */}
-      {organiser && newThisWeek.length > 0 && (
+      {/* Organizers only: who arrived, and who nobody has spoken to.
+          Hidden once every newcomer has been welcomed AND played —
+          the section exists to point at people who need chasing, and
+          a list where every row is fine is a list with nothing to say. */}
+      {organiser && needWelcome.length > 0 && (
         <section>
           <h2 className="section-label" style={{ marginBottom: "var(--s3)" }}>New members this week</h2>
           <ListGroup>
-            {newThisWeek.map((m) => {
+            {needWelcome.map((m) => {
               const post = welcomePostFor.get(m.userId);
               const played = playedIds.has(m.userId);
               const days = Math.floor((Date.now() - m.joinedAt.getTime()) / 86_400_000);
@@ -549,7 +610,7 @@ export default async function ClubPage({
                 size="sm"
                 href={`/tournaments/${t.id}`}
                 avatar={false}
-                name={t.name}
+                name={stripClubName(t.name, club.name)}
                 meta={[
                   t.format.toLowerCase(),
                   t.timeControlDetail ?? t.timeControl,

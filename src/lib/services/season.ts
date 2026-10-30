@@ -35,12 +35,22 @@ export async function currentSeason(clubId: string) {
  * Open a season. A club runs one at a time, so opening a new one
  * closes whatever was running.
  */
+/** A season split into two halves needs at least this long. */
+const MIN_SEASON_MS = 28 * 86_400_000;
+
 export async function openSeason(
   clubId: string,
   input: { name: string; startsAt: Date; halfwayAt: Date; endsAt: Date },
 ) {
   if (!(input.startsAt < input.halfwayAt && input.halfwayAt < input.endsAt)) {
     throw new Error("season_dates_out_of_order");
+  }
+  // Ordering alone let a "season" run from the 1st to the 26th of one
+  // month, which passes every check here and then renders as a single
+  // repeated month label with a progress bar already at the end. Two
+  // halves and a championship need longer than a fortnight.
+  if (input.endsAt.getTime() - input.startsAt.getTime() < MIN_SEASON_MS) {
+    throw new Error("season_too_short");
   }
 
   await prisma.season.updateMany({

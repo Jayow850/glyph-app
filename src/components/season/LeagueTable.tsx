@@ -48,8 +48,14 @@ export function LeagueTable({
     );
   }
 
-  const up = showMovement ? promoteCount : 0;
-  const down = showMovement ? relegateCount : 0;
+  // Clamped to the division. "Top 2 promoted. Bottom 2 relegated." in a
+  // division of two says everybody goes up and everybody goes down, and
+  // a member who reads that stops believing the table. A division can
+  // never move more than (size - 1) in either direction, and the two
+  // together can never exceed size - 1 either: somebody has to stay.
+  const headroom = Math.max(0, rows.length - 1);
+  const up = showMovement ? Math.min(promoteCount, headroom) : 0;
+  const down = showMovement ? Math.min(relegateCount, Math.max(0, headroom - up)) : 0;
 
   return (
     <div

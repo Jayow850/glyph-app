@@ -36,18 +36,45 @@ export async function createDivision(
     tier: number;
     promoteCount?: number;
     relegateCount?: number;
+    /** Members the organiser is about to place, if known at create. */
+    size?: number;
   },
 ) {
+  const { promoteCount, relegateCount } = clampMovement(
+    input.promoteCount ?? 2,
+    input.relegateCount ?? 2,
+    input.size,
+  );
+
   return prisma.division.create({
     data: {
       seasonId,
       half: input.half,
       name: input.name.trim(),
       tier: input.tier,
-      promoteCount: input.promoteCount ?? 2,
-      relegateCount: input.relegateCount ?? 2,
+      promoteCount,
+      relegateCount,
     },
   });
+}
+
+/**
+ * Promotion and relegation a division can actually carry out.
+ *
+ * A division of two that promotes two and relegates two moves every
+ * member in both directions at once. Somebody has to stay, so the two
+ * counts together can never exceed (size - 1). Without a size — the
+ * organiser has not placed anybody yet — the stored numbers are left
+ * alone and the table clamps them at render instead.
+ */
+export function clampMovement(promote: number, relegate: number, size?: number) {
+  if (size === undefined) {
+    return { promoteCount: Math.max(0, promote), relegateCount: Math.max(0, relegate) };
+  }
+  const headroom = Math.max(0, size - 1);
+  const promoteCount = Math.min(Math.max(0, promote), headroom);
+  const relegateCount = Math.min(Math.max(0, relegate), Math.max(0, headroom - promoteCount));
+  return { promoteCount, relegateCount };
 }
 
 /**

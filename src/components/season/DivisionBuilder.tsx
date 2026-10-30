@@ -73,6 +73,10 @@ export function DivisionBuilder({
   const unnamed = names.some((n) => !n.trim());
   const tooSmall = sizes.some((n) => n < 2);
 
+  // The division that will constrain the movement counts.
+  const smallest = sizes.length ? Math.min(...sizes) : 0;
+  const movementTooBig = smallest >= 2 && promoteCount + relegateCount > smallest - 1;
+
   async function create() {
     if (busy || unnamed || tooSmall) return;
     setBusy(true);
@@ -223,6 +227,27 @@ export function DivisionBuilder({
           </select>
         </label>
       </div>
+
+      {/* Somebody has to stay. Told to the organiser here, where the
+          numbers are chosen, rather than discovered later by a member
+          reading "Top 2 promoted. Bottom 2 relegated." above a
+          division of two. */}
+      {movementTooBig && (
+        <p
+          className="t-caption"
+          style={{
+            padding: "0 var(--s4) var(--s3)", color: "var(--text-muted)",
+            display: "flex", gap: 6, alignItems: "flex-start",
+          }}
+        >
+          <span style={{ flexShrink: 0, marginTop: 1 }}><Icon name="hourglass" size={12} /></span>
+          <span>
+            {smallest === 2
+              ? "A division of two cannot promote and relegate two each. It will move at most one."
+              : `Your smallest division has ${smallest}. Promotion and relegation will be capped so somebody stays.`}
+          </span>
+        </p>
+      )}
 
       {/* Seeded by rating, changed by judgement. */}
       <div style={{ borderTop: "1px solid var(--border)" }}>

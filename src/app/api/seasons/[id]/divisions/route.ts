@@ -43,7 +43,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     );
   }
 
-  const division = await createDivision(id, body);
+  // userIds is the division's roster, so the movement counts can be
+  // clamped to it on the way in rather than only at render.
+  const division = await createDivision(id, { ...body, size: body.userIds?.length });
 
   // Members and fixtures in the same call: a division with no fixtures
   // is a list, and a list is not a league.
