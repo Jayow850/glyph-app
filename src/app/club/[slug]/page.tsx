@@ -20,6 +20,9 @@ import { LeagueTable } from "@/components/season/LeagueTable";
 import { GamesOwed } from "@/components/season/GamesOwed";
 import { OrganiserPanel } from "@/components/season/OrganiserPanel";
 import { canRunCompetitions, canAwardHonours } from "@/lib/services/officers";
+import { ladder, rulesOf } from "@/lib/services/ladder";
+import { LadderBoard } from "@/components/ladder/LadderBoard";
+import { LadderRules } from "@/components/ladder/LadderRules";
 import { trophyCabinet } from "@/lib/services/trophies";
 import { TrophyCabinet } from "@/components/trophy/TrophyCabinet";
 import { TrophyForm } from "@/components/trophy/TrophyForm";
@@ -124,8 +127,12 @@ export default async function ClubPage({
     clubNightFor(club.id, userId),
   ]);
 
-  // The cabinet by the door.
-  const trophies = await trophyCabinet(club.id);
+  // The cabinet by the door, and the ladder beside it.
+  const [trophies, rungs] = await Promise.all([
+    trophyCabinet(club.id),
+    ladder(club.id),
+  ]);
+  const ladderRules = rulesOf(club);
 
   // ---- The season, and everything that reports into it ----
   const season = await currentSeason(club.id);
@@ -498,6 +505,22 @@ export default async function ClubPage({
           <h2 className="section-label">Trophies</h2>
           <TrophyCabinet clubSlug={club.slug} trophies={trophies} canAdd={canClose} />
           {canClose && <TrophyForm clubSlug={club.slug} />}
+        </section>
+      )}
+
+      {/* The ladder. Shown to members, and to anyone once it has names
+          on it — a visitor should be able to see who is at the top. */}
+      {(rungs.length > 0 || isMember) && (
+        <section style={{ display: "flex", flexDirection: "column", gap: "var(--s3)" }}>
+          <h2 className="section-label">Ladder</h2>
+          <LadderBoard
+            clubSlug={club.slug}
+            rungs={rungs}
+            rules={ladderRules}
+            meId={userId}
+            isMember={isMember}
+          />
+          <LadderRules clubSlug={club.slug} rules={ladderRules} canEdit={organiser} />
         </section>
       )}
 
